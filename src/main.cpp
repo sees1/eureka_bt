@@ -1,4 +1,5 @@
 #include <rclcpp/rclcpp.hpp>
+#include <chrono>
 #include <eureka_bt/cv.hpp>
 #include <eureka_bt/goal_pose.hpp>
 #include <eureka_bt/turn_inside.hpp>
@@ -8,6 +9,20 @@
 #include <behaviortree_cpp_v3/control_node.h>
 #include <eureka_bt/bt_action_node.hpp>
 
+template <typename ActionType>
+void register_action(
+    std::string&& node_name,
+    BT::BehaviorTreeFactory& factory,
+    rclcpp::Node::SharedPtr& ros_node)
+{
+    BT::NodeBuilder builder = [&](auto name, auto config)
+    {
+      std::string msg = "Building " + node_name + " Action";
+      RCLCPP_INFO(ros_node->get_logger(), msg.c_str());
+      return std::make_unique<ActionType>(name, config, ros_node);
+    };
+    factory.registerBuilder<ActionType>(std::move(node_name), builder);
+}
 
 int main(int argc, char **argv) {
   rclcpp::init(argc, argv);
@@ -15,25 +30,19 @@ int main(int argc, char **argv) {
 
   BT::BehaviorTreeFactory factory;
 
-  factory.registerNodeType<CV_detection>("CV_detection");
-  factory.registerNodeType<Goalpose>("Goal_pose");  
-  factory.registerNodeType<Turn_inside>("Turn_inside");
+  register_action<Goalpose>("Goal_pose", factory, nh);
+  register_action<Turn_inside>("Turn_inside", factory, nh);
 
   auto tree = factory.createTreeFromFile("./src/eureka_bt/xml_tree/tree.xml");
 
-  BT::NodeConfiguration con = {};
-  auto lc_listener = std::make_shared<CV_detection>("lc_listener", con);
-  auto lc_goal = std::make_shared<Goalpose>("lc_goal", con);
-  auto lc_turn = std::make_shared<Turn_inside>("lc_turn", con);
+  auto timer = nh->create_wall_timer(std::chrono::milliseconds(500), 
+    [&tree]()
+    {
+      tree.tickRoot();
+    }
+  );
 
-  rclcpp::Rate rate(10); 
-
-  while (rclcpp::ok()) {
-    rclcpp::spin_some(lc_listener);
-    rclcpp::spin_some(lc_goal);
-    rclcpp::spin_some(lc_turn); 
-    tree.tickRoot();
-  }
+  rclcpp::spin(nh);
 
   rclcpp::shutdown();
   return 0;

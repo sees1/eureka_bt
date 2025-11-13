@@ -1,9 +1,8 @@
 <root BTCPP_format="4">
     <BehaviorTree ID="MainTree">
-        <Parallel name="root_parallel" success_threshold="3" failure_threshold="3">
-            <CV_detection name="CV_detection" narrow_arrow="{narrow_arrow}" length="{length}" angle="{angle}" coef="{coef}"/>
-            <Goal_pose name="Goal_pose" narrow_arrow="{narrow_arrow}" length="{length}" angle="{angle}" coef="{coef}" turning_koef="{turning_koef}"/>
-            <Turn_inside name="Turn_inside" narrow_arrow="{narrow_arrow}" length="{length}" angle="{angle}" coef="{coef}" turning_koef="{turning_koef}"/>
-        </Parallel>
+        <Sequence name="movements">
+            <Goal_pose    name = "Goal_pose"/>
+            <Turn_inside  name = "Turn_inside"/>
+        </Sequence>
     </BehaviorTree>
 </root>

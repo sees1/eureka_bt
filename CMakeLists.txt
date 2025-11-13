@@ -9,6 +9,7 @@ endif()
 set(THIS_PACKAGE_INCLUDE_DEPENDS
   sensor_msgs
   geometry_msgs
+  nav_msgs
   behaviortree_cpp_v3
   rclcpp
   rcpputils
@@ -16,14 +17,14 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   tf2
   rclcpp_action
   nav2_msgs
-  behaviortree_ros2
+  # behaviortree_ros2
 )
 
 foreach(Dependency IN LISTS THIS_PACKAGE_INCLUDE_DEPENDS)
   find_package(${Dependency} REQUIRED)
 endforeach()
 
-include_directories(include/)
+include_directories(include)
 
 add_executable(${PROJECT_NAME}
   src/action_nodes/turn_inside.cpp
@@ -35,6 +36,7 @@ add_executable(${PROJECT_NAME}
 ament_target_dependencies(${PROJECT_NAME}
   sensor_msgs
   geometry_msgs
+  nav_msgs
   behaviortree_cpp_v3
   rclcpp
   rcpputils
@@ -42,7 +44,7 @@ ament_target_dependencies(${PROJECT_NAME}
   tf2
   rclcpp_action
   nav2_msgs
-  behaviortree_ros2
+  # behaviortree_ros2
 )
 
 # INSTALL
