@@ -2,6 +2,7 @@
 #include <future>
 #include <cmath>
 #include <chrono>
+#include <deque>
 
 #include <rclcpp/rclcpp.hpp>
 #include <behaviortree_cpp_v3/action_node.h>
@@ -18,67 +19,60 @@
 
 class Turn_inside : public BT::StatefulActionNode {
 public:
-    Turn_inside(const std::string& name,
-                const BT::NodeConfiguration& config,
-                rclcpp::Node::SharedPtr node);
+  Turn_inside(const std::string& name,
+              const BT::NodeConfiguration& config,
+              rclcpp::Node::SharedPtr node);
 
-    static BT::PortsList providedPorts();
+  static BT::PortsList providedPorts();
 
-    virtual BT::NodeStatus onStart() override;
-    virtual BT::NodeStatus onRunning() override;
-    virtual void onHalted() override;
-
-protected:
-    // before been in cv node
-    void processValues();
-    double calculateAverage(const std::vector<double>& values);
-    void clearData();
-
-    void updateGoalPose(double turn_angle);
-    bool stopRobot();
-    bool tryToCollectData();
-    double computeRobotYaw();
+  virtual BT::NodeStatus onStart() override;
+  virtual BT::NodeStatus onRunning() override;
+  virtual void onHalted() override;
 
 private:
-    // ros parameter's
-    std::string odometry_topic_name_;
-    bool dry_run_;
+  // before been in cv node
+  void processValues();
 
 private:
-    std::mutex mut;
-    rclcpp::Node::SharedPtr node_;
-    rclcpp::TimerBase::SharedPtr timer_;
+  bool stopRobot();
+  void updateRotation(double turn_angle);
 
-    rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub;
-    rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub;
-    
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr publisher_turn;
+private:
+  static double computeRobotYaw(tf2::Quaternion& pose_q);
 
-    bool collect_success_;
-    bool turning_task_finished_;
-    bool is_robot_stop_;
-    bool stop_fire_once_;
+private:
+  // ros parameter's
+  bool dry_run_;
+  size_t buffer_size_;
+  std::string odometry_topic_name_;
 
-    std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
+private:
+  rclcpp::Node::SharedPtr node_;
+  
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
+  
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr turn_pub_;
+  
+  // processing flag's
+  bool turning_task_finished_;
+  bool is_robot_stop_;
+  
+  // processing logic parameter's
+  double before_turning_yaw_;
+  double turn_angle_;
+  
+  // stop logic parameter's
+  bool stop_fire_once_;
+  std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
+  
+  // arrow logic substracted from cv node
+  std::deque<std::string> names_;
+  std::string narrow_ = "No_detection";
 
-    double before_turning_yaw_;
-    double turn_angle_;
+  tf2::Quaternion pose_quat_;
 
-    std::vector<std::string> names_;
-    std::vector<double> positions_;
-    std::vector<double> velocities_;
-    std::vector<double> efforts_;
-
-    std::string narrow = "No_detection";
-    double length = 0.0;
-    double angle = 0.0;
-    double coef = 0.0;
-
-    double pose_x_;
-    double pose_y_;
-    double orientationw;
-    double orientationx;
-    double orientationy;
-    double orientationz;
+  // controll take data from topic and publish goal process
+  std::mutex mut_;
 };
 

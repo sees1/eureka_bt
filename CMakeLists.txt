@@ -29,7 +29,6 @@ include_directories(include)
 add_executable(${PROJECT_NAME}
   src/action_nodes/turn_inside.cpp
   src/action_nodes/goal_pose.cpp
-  src/action_nodes/cv.cpp
   src/main.cpp
 )
 

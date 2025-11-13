@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <deque>
 #include <chrono>
 #include <thread>
 #include <mutex>
@@ -19,65 +20,63 @@
 class Goalpose : public BT::StatefulActionNode {
 public:
   Goalpose(const std::string& name,
-            const BT::NodeConfiguration& config,
-            rclcpp::Node::SharedPtr node);
+           const BT::NodeConfiguration& config,
+           rclcpp::Node::SharedPtr node);
 
   static BT::PortsList providedPorts();
 
   virtual BT::NodeStatus onStart() override;
   virtual BT::NodeStatus onRunning() override;
   virtual void onHalted() override;
+  
+private:
+  bool isRobotNearGoal();
+  void publishGoalPose(double length, double angle);
 
 private:
   // before been in cv node
   void processValues();
-  double calculateAverage(const std::vector<double>& values);
-  void clearData();
-
-  bool fullClearing();
-
-  void publishGoalPose(double length, double angle);
-  bool isRobotNearGoal();
+  double calculateAverage(const std::deque<double>& values);
 
 private:
   // ros parameters
   bool full_info_;
   bool dry_run_;
   double lenght_error_;
+  size_t buffer_size_;
   std::string odometry_topic_name_;
 
 private:
   rclcpp::Node::SharedPtr node_;
 
-  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr publisher;
+  rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub_;
 
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub;
-  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
 
-  bool already_published;
-  double current_goal_x;
-  double current_goal_y;
+  bool already_published_;
+  double current_goal_x_;
+  double current_goal_y_;
 
-  std::vector<std::string> names_;
-  std::vector<double> positions_;
-  std::vector<double> velocities_;
-  std::vector<double> efforts_;
+  std::deque<std::string> names_;
+  std::deque<double>      positions_;
+  std::deque<double>      velocities_;
+  std::deque<double>      efforts_;
 
   std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
 
-  std::string narrow = "No_detection";
-  double length = 0.0;
-  double angle = 0.0;
-  double coef = 0.0;
-
-  bool full_clear = false;
-  bool clearing_fire_once_ = false;
+  std::string narrow_ = "No_detection";
+  double length_ = 0.0;
+  double angle_ = 0.0;
+  double coef_ = 0.0;
   
+  double pose_x_;
+  double pose_y_;
+  double quat_w_;
+  double quat_x_;
+  double quat_y_;
+  double quat_z_;
+  
+  // controll take data from topic and publish goal process
   std::mutex mut_;
-  double posex;
-  double posey;
-  double orientationw;
-  double orientationx;
-  double orientationy;
-  double orientationz;
 };

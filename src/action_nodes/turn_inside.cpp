@@ -9,12 +9,11 @@ Turn_inside::Turn_inside(const std::string& name,
                          rclcpp::Node::SharedPtr node)
 : BT::StatefulActionNode(name, config),
   node_(node),
-  collect_success_(false),
   turning_task_finished_(true),
   is_robot_stop_(false),
-  stop_fire_once_(false),
   before_turning_yaw_(0.0),
-  turn_angle_(0.0)
+  turn_angle_(0.0),
+  stop_fire_once_(false)
 {
   if (node_->has_parameter("dry_run"))
     dry_run_ = node_->get_parameter("dry_run").as_bool();
@@ -26,24 +25,27 @@ Turn_inside::Turn_inside(const std::string& name,
   else  
     odometry_topic_name_ = node_->declare_parameter("odometry_topic_name", "/odometry");
 
-  pose_sub = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
+  if (node_->has_parameter("buffer_size"))
+    buffer_size_ = static_cast<size_t>(node_->get_parameter("buffer_size").as_int());
+  else
+    buffer_size_ = static_cast<size_t>(node_->declare_parameter("buffer_size", 10));
+
+  pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
     {
-      pose_x_ = msg->pose.pose.position.x;
-      pose_y_ = msg->pose.pose.position.y;
-      orientationw = msg->pose.pose.orientation.w;
-      orientationx = msg->pose.pose.orientation.x;
-      orientationy = msg->pose.pose.orientation.y;
-      orientationz = msg->pose.pose.orientation.z;
+      pose_quat_ = tf2::Quaternion(msg->pose.pose.orientation.x,
+                                   msg->pose.pose.orientation.y,
+                                   msg->pose.pose.orientation.z,
+                                   msg->pose.pose.orientation.w);
     }
   );
 
-  arrow_sub = node_->create_subscription<sensor_msgs::msg::JointState>("/arrow_detection", 10,
+  arrow_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>("/arrow_detection", 10,
     [&](const sensor_msgs::msg::JointState::SharedPtr msg)
     {
-      // RCLCPP_INFO(node_->get_logger(), "(Turn_inside) arrow compute loop called!");
+      std::lock_guard<std::mutex> lc(mut_);
 
-      if (!msg->name.empty() && !dry_run_ && names_.size() != 5)
+      if (!dry_run_)
       {
         double max = 0;
         size_t max_idx = 0;
@@ -56,15 +58,15 @@ Turn_inside::Turn_inside(const std::string& name,
           }
         }
 
-        names_.emplace_back(msg->name[max_idx]);
-        positions_.emplace_back(msg->position[max_idx]);
-        velocities_.emplace_back(msg->velocity[max_idx]);
-        efforts_.emplace_back(msg->effort[max_idx]);
+        if (names_.size() == buffer_size_)
+          names_.pop_front();
+
+        names_.push_back(msg->name[max_idx]);
       }
     }
   );
 
-  publisher_turn = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
+  turn_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 }
 
 BT::PortsList Turn_inside::providedPorts() 
@@ -80,30 +82,9 @@ BT::NodeStatus Turn_inside::onStart()
   return BT::NodeStatus::RUNNING;
 } 
 
-bool Turn_inside::tryToCollectData()
-{
-  if (dry_run_)
-    return true;
-
-  if (names_.size() == 5)
-  {
-    processValues();
-
-    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Collect enough data to process!");
-
-    return true;
-  }
-  else
-    return false;
-}
-
 BT::NodeStatus Turn_inside::onRunning() 
 {
-  if (!collect_success_)
-    collect_success_ = tryToCollectData();
-
-  if (!collect_success_)
-    return BT::NodeStatus::RUNNING;
+  std::lock_guard<std::mutex> lc(mut_);
 
   if (dry_run_)
   {
@@ -111,14 +92,13 @@ BT::NodeStatus Turn_inside::onRunning()
     {
       if (!is_robot_stop_)
       {
-        stopRobot();
-        is_robot_stop_ = true;
+        is_robot_stop_ = stopRobot();
 
-        before_turning_yaw_ = computeRobotYaw();
+        before_turning_yaw_ = computeRobotYaw(pose_quat_);
         turn_angle_ = 90.0;
       }
-
-      updateGoalPose(turn_angle_);
+      else
+        updateRotation(turn_angle_);
     }
     else
     {
@@ -134,11 +114,12 @@ BT::NodeStatus Turn_inside::onRunning()
       {
         is_robot_stop_ = stopRobot();
 
-        before_turning_yaw_ = computeRobotYaw();
-        turn_angle_ = (narrow == "left") ? 90.0 : -90.0;
+        processValues();
+        before_turning_yaw_ = computeRobotYaw(pose_quat_);
+        turn_angle_ = (narrow_ == "left") ? 90.0 : -90.0;
       }
       else
-        updateGoalPose(turn_angle_);
+        updateRotation(turn_angle_);
     }
     else
     {
@@ -164,32 +145,7 @@ void Turn_inside::processValues()
     }
   );
 
-  narrow = has_no_detection ? "No_detection" : names_.back();
-
-  length = calculateAverage(positions_);
-  angle = calculateAverage(velocities_);
-  coef = calculateAverage(efforts_);
-}
-
-double Turn_inside::calculateAverage(const std::vector<double>& values)
-{
-  double sum = 0.0;
-
-  for (const auto& value : values)
-    sum += value;
-  
-  return sum / values.size();  
-}
-
-void Turn_inside::clearData() {
-  narrow = "No_detection";
-  length = 0.0;
-  angle = 0.0;
-  coef = 0.0;
-  names_.clear();
-  positions_.clear();
-  velocities_.clear();
-  efforts_.clear();
+  narrow_ = has_no_detection ? "No_detection" : names_.back();
 }
 
 bool Turn_inside::stopRobot()
@@ -208,7 +164,7 @@ bool Turn_inside::stopRobot()
   twist_msg.angular.x = 0.0;
   twist_msg.angular.y = 0.0;
   twist_msg.angular.z = 0.0;
-  publisher_turn->publish(twist_msg);
+  turn_pub_->publish(twist_msg);
 
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot in stop process!");
   double dt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - last_time_point_).count() / 1000.0;
@@ -219,17 +175,7 @@ bool Turn_inside::stopRobot()
     return false;
 }
 
-double Turn_inside::computeRobotYaw()
-{
-  tf2::Quaternion pose_q(orientationx, orientationy, orientationz, orientationw);
-  tf2::Matrix3x3 pose_m(pose_q);
-  double pose_roll, pose_pitch, pose_yaw;
-  pose_m.getRPY(pose_roll, pose_pitch, pose_yaw);
-
-  return pose_yaw;
-}
-
-void Turn_inside::updateGoalPose(double turn_angle)
+void Turn_inside::updateRotation(double turn_angle)
 {
   geometry_msgs::msg::Twist twist_msg;
   twist_msg.linear.y = 0.0;
@@ -247,7 +193,7 @@ void Turn_inside::updateGoalPose(double turn_angle)
     twist_msg.linear.x = -0.2;
   }
 
-  double current_robot_yaw = computeRobotYaw();
+  double current_robot_yaw = computeRobotYaw(pose_quat_);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Current robot yaw = %f", current_robot_yaw);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Befor turning robot yaw = %f", before_turning_yaw_);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Turning yaw = %f deg", turn_angle);
@@ -256,7 +202,7 @@ void Turn_inside::updateGoalPose(double turn_angle)
   if ((turn_angle > 0 && before_turning_yaw_ + (turn_angle * M_PI) / 180 > current_robot_yaw) ||
       (turn_angle < 0 && before_turning_yaw_ + (turn_angle * M_PI) / 180 < current_robot_yaw))
   {
-    publisher_turn->publish(twist_msg);
+    turn_pub_->publish(twist_msg);
   }
   else
   {
@@ -265,4 +211,15 @@ void Turn_inside::updateGoalPose(double turn_angle)
     turning_task_finished_ = true;
     stop_fire_once_ = false;
   }
+}
+
+// static member's
+
+double Turn_inside::computeRobotYaw(tf2::Quaternion& pose_q)
+{
+  tf2::Matrix3x3 pose_m(pose_q);
+  double pose_roll, pose_pitch, pose_yaw;
+  pose_m.getRPY(pose_roll, pose_pitch, pose_yaw);
+
+  return pose_yaw;
 }
