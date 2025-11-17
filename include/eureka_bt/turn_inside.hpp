@@ -45,6 +45,8 @@ private:
   // ros parameter's
   bool dry_run_;
   size_t buffer_size_;
+  double dummy_rotation_dur_;
+  double too_far_length_;
   std::string odometry_topic_name_;
 
 private:

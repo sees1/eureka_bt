@@ -29,6 +29,16 @@ Turn_inside::Turn_inside(const std::string& name,
   else
     buffer_size_ = static_cast<size_t>(node_->declare_parameter("buffer_size", 10));
 
+  if (node_->has_parameter("dummy_rotate_duration"))
+    dummy_rotation_dur_ = static_cast<size_t>(node_->get_parameter("dummy_rotate_duration").as_double());
+  else
+    dummy_rotation_dur_ = static_cast<size_t>(node_->declare_parameter("dummy_rotate_duration", 4.0));
+
+  if (node_->has_parameter("too_far_distance"))
+    too_far_length_ = static_cast<size_t>(node_->get_parameter("too_far_distance").as_double());
+  else
+    too_far_length_ = static_cast<size_t>(node_->declare_parameter("too_far_distance", 4.0));
+
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
     {
@@ -112,7 +122,7 @@ BT::NodeStatus Turn_inside::onRunning()
       }
 
       // dummy rotate 4 seconds -_-
-      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < 4)
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_)
         updateRotation(turn_narrow_);
       else
       {
@@ -150,9 +160,9 @@ BT::NodeStatus Turn_inside::onRunning()
         rotate_fire_once_ = true;
       }
 
-      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < 4 ||
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
           narrow_ == "No_detection" ||
-          length_ > 4.0)
+          too_far_length_ > 4.0)
         updateRotation(turn_narrow_);
       else
       {

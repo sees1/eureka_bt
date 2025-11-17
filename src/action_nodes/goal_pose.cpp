@@ -21,7 +21,7 @@ Goalpose::Goalpose(const std::string& name,
   if (node_->has_parameter("lenght_error"))
     lenght_error_ = node_->get_parameter("lenght_error").as_double();
   else
-    lenght_error_ = node_->declare_parameter("lenght_error", -0.2);
+    lenght_error_ = node_->declare_parameter("lenght_error", -1.6);
 
   if (node_->has_parameter("buffer_size"))
     buffer_size_ = static_cast<size_t>(node_->get_parameter("buffer_size").as_int());
@@ -37,6 +37,11 @@ Goalpose::Goalpose(const std::string& name,
     odometry_topic_name_ = node_->get_parameter("odometry_topic_name").as_string();
   else  
     odometry_topic_name_ = node_->declare_parameter("odometry_topic_name", "/odometry");
+
+  if (node_->has_parameter("too_far_distance"))
+    too_far_length_ = static_cast<size_t>(node_->get_parameter("too_far_distance").as_double());
+  else
+    too_far_length_ = static_cast<size_t>(node_->declare_parameter("too_far_distance", 4.0));
 
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
@@ -119,7 +124,7 @@ BT::NodeStatus Goalpose::onRunning()
         }
       }
       
-      if (length_ < 4.0 && length_ > 1.8 && narrow_ != "No_detection" && already_published_ == false)
+      if (too_far_length_ < 4.0 && length_ > 1.8 && narrow_ != "No_detection" && already_published_ == false)
       {
         publishGoalPose(length_, angle_);
         already_published_ = true;

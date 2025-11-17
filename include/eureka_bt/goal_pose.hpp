@@ -44,6 +44,7 @@ private:
   bool dry_run_;
   double lenght_error_;
   size_t buffer_size_;
+  double too_far_length_;
   std::string odometry_topic_name_;
 
 private:
