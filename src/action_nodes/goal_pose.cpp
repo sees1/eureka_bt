@@ -104,7 +104,7 @@ BT::NodeStatus Goalpose::onRunning()
 
   if (!dry_run_)
   {
-    if (names_.size() == 5)
+    if (names_.size() == buffer_size_)
     {
       processValues();
 
@@ -119,7 +119,7 @@ BT::NodeStatus Goalpose::onRunning()
         }
       }
       
-      if (length_ > 1.8 && narrow_ != "No_detection" && already_published_ == false)
+      if (length_ < 4.0 && length_ > 1.8 && narrow_ != "No_detection" && already_published_ == false)
       {
         publishGoalPose(length_, angle_);
         already_published_ = true;

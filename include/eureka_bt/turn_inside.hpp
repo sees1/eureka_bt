@@ -32,10 +32,11 @@ public:
 private:
   // before been in cv node
   void processValues();
+  double calculateAverage(const std::deque<double>& values);
 
 private:
   bool stopRobot();
-  void updateRotation(double turn_angle);
+  void updateRotation(std::string& turn_arrow);
 
 private:
   static double computeRobotYaw(tf2::Quaternion& pose_q);
@@ -58,17 +59,25 @@ private:
   bool turning_task_finished_;
   bool is_robot_stop_;
   
-  // processing logic parameter's
-  double before_turning_yaw_;
-  double turn_angle_;
-  
   // stop logic parameter's
   bool stop_fire_once_;
   std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
+
+  // rotate logic parameter's
+  bool rotate_fire_once_;
+  std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
   
   // arrow logic substracted from cv node
   std::deque<std::string> names_;
+  std::deque<double>      positions_;
+  std::deque<double>      velocities_;
+  std::deque<double>      efforts_;
+
   std::string narrow_ = "No_detection";
+  std::string turn_narrow_;
+  double length_ = 0.0;
+  double angle_ = 0.0;
+  double coef_ = 0.0;
 
   tf2::Quaternion pose_quat_;
 

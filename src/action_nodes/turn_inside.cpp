@@ -11,9 +11,8 @@ Turn_inside::Turn_inside(const std::string& name,
   node_(node),
   turning_task_finished_(true),
   is_robot_stop_(false),
-  before_turning_yaw_(0.0),
-  turn_angle_(0.0),
-  stop_fire_once_(false)
+  stop_fire_once_(false),
+  rotate_fire_once_(false)
 {
   if (node_->has_parameter("dry_run"))
     dry_run_ = node_->get_parameter("dry_run").as_bool();
@@ -59,9 +58,17 @@ Turn_inside::Turn_inside(const std::string& name,
         }
 
         if (names_.size() == buffer_size_)
+        {
           names_.pop_front();
+          positions_.pop_front();
+          velocities_.pop_front();
+          efforts_.pop_front();
+        }
 
         names_.push_back(msg->name[max_idx]);
+        positions_.push_back(msg->position[max_idx]);
+        velocities_.push_back(msg->velocity[max_idx]);
+        efforts_.push_back(msg->effort[max_idx]);
       }
     }
   );
@@ -94,11 +101,27 @@ BT::NodeStatus Turn_inside::onRunning()
       {
         is_robot_stop_ = stopRobot();
 
-        before_turning_yaw_ = computeRobotYaw(pose_quat_);
-        turn_angle_ = 90.0;
+        turn_narrow_ = "left";
+        return BT::NodeStatus::RUNNING;
       }
+
+      if (!rotate_fire_once_)
+      {
+        rotate_time_point_ = std::chrono::steady_clock::now();
+        rotate_fire_once_ = true;
+      }
+
+      // dummy rotate 4 seconds -_-
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < 4)
+        updateRotation(turn_narrow_);
       else
-        updateRotation(turn_angle_);
+      {
+        turn_narrow_ = "No_detection";
+        is_robot_stop_ = false;
+        turning_task_finished_ = true;
+        stop_fire_once_ = false;
+        rotate_fire_once_ = false;
+      }
     }
     else
     {
@@ -108,18 +131,37 @@ BT::NodeStatus Turn_inside::onRunning()
   }
   else
   {
-    if (!turning_task_finished_)
+    if (!turning_task_finished_ && names_.size() == buffer_size_)
     {
+      processValues();
+
       if (!is_robot_stop_)
       {
         is_robot_stop_ = stopRobot();
 
-        processValues();
-        before_turning_yaw_ = computeRobotYaw(pose_quat_);
-        turn_angle_ = (narrow_ == "left") ? 90.0 : -90.0;
+        turn_narrow_ = narrow_;
+
+        return BT::NodeStatus::RUNNING;
       }
+
+      if (!rotate_fire_once_)
+      {
+        rotate_time_point_ = std::chrono::steady_clock::now();
+        rotate_fire_once_ = true;
+      }
+
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < 4 ||
+          narrow_ == "No_detection" ||
+          length_ > 4.0)
+        updateRotation(turn_narrow_);
       else
-        updateRotation(turn_angle_);
+      {
+        turn_narrow_ = "No_detection";
+        is_robot_stop_ = false;
+        turning_task_finished_ = true;
+        stop_fire_once_ = false;
+        rotate_fire_once_ = false;
+      }
     }
     else
     {
@@ -146,6 +188,20 @@ void Turn_inside::processValues()
   );
 
   narrow_ = has_no_detection ? "No_detection" : names_.back();
+
+  length_ = calculateAverage(positions_);
+  angle_ = calculateAverage(velocities_);
+  coef_ = calculateAverage(efforts_);
+}
+
+double Turn_inside::calculateAverage(const std::deque<double>& values)
+{
+  double sum = 0.0;
+
+  for (const auto& value : values)
+    sum += value;
+  
+  return sum / values.size();  
 }
 
 bool Turn_inside::stopRobot()
@@ -175,7 +231,7 @@ bool Turn_inside::stopRobot()
     return false;
 }
 
-void Turn_inside::updateRotation(double turn_angle)
+void Turn_inside::updateRotation(std::string& turn_arrow)
 {
   geometry_msgs::msg::Twist twist_msg;
   twist_msg.linear.y = 0.0;
@@ -184,33 +240,20 @@ void Turn_inside::updateRotation(double turn_angle)
   twist_msg.angular.y = 0.0;
   twist_msg.angular.z = 100.0;
 
-  if (turn_angle > 0)
+  if (turn_arrow == "left")
   {
     twist_msg.linear.x = 0.2;
   }
-  else
+  else if (turn_arrow == "right")
   {
     twist_msg.linear.x = -0.2;
   }
-
-  double current_robot_yaw = computeRobotYaw(pose_quat_);
-  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Current robot yaw = %f", current_robot_yaw);
-  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Befor turning robot yaw = %f", before_turning_yaw_);
-  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Turning yaw = %f deg", turn_angle);
-  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) After turning robot yaw = %f", before_turning_yaw_ + (turn_angle * M_PI) / 180);
-
-  if ((turn_angle > 0 && before_turning_yaw_ + (turn_angle * M_PI) / 180 > current_robot_yaw) ||
-      (turn_angle < 0 && before_turning_yaw_ + (turn_angle * M_PI) / 180 < current_robot_yaw))
-  {
-    turn_pub_->publish(twist_msg);
-  }
   else
   {
-    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Succesfully turned robot!");
-    is_robot_stop_ = false;
-    turning_task_finished_ = true;
-    stop_fire_once_ = false;
+    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction!");
   }
+
+  turn_pub_->publish(twist_msg);
 }
 
 // static member's
