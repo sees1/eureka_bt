@@ -61,11 +61,19 @@ Goalpose::Goalpose(const std::string& name,
     {
       std::lock_guard<std::mutex> lc(mut_);
 
+      // collect only none and arrow:left/arrow:right
       if (!dry_run_)
       {
+        std::vector<int> v_idx;
+        for(size_t idx = 0; idx < msg->name.size(); ++idx)
+        {
+          if (msg->name[idx] != "cone:none")
+            v_idx.push_back(idx);
+        }
+
         double max = 0;
         size_t max_idx = 0;
-        for(size_t idx = 0; idx < msg->effort.size(); ++idx)
+        for(auto idx : v_idx)
         {
           if (msg->effort[idx] > max)
           {
@@ -82,10 +90,15 @@ Goalpose::Goalpose(const std::string& name,
           efforts_.pop_front();
         }
 
-        names_.push_back(msg->name[max_idx]);
-        positions_.push_back(msg->position[max_idx]);
-        velocities_.push_back(msg->velocity[max_idx]);
-        efforts_.push_back(msg->effort[max_idx]);
+        // if v_idx.size == 0 than we can't find any none or arrow detection, 
+        // only cone so don't add it
+        if (v_idx.size())
+        {
+          names_.push_back(msg->name[max_idx]);
+          positions_.push_back(msg->position[max_idx]);
+          velocities_.push_back(msg->velocity[max_idx]);
+          efforts_.push_back(msg->effort[max_idx]);
+        }
       }
     }
   );
@@ -124,7 +137,7 @@ BT::NodeStatus Goalpose::onRunning()
         }
       }
       
-      if (too_far_length_ < 4.0 && length_ > 1.8 && narrow_ != "No_detection" && already_published_ == false)
+      if (too_far_length_ < 4.0 && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
       {
         publishGoalPose(length_, angle_);
         already_published_ = true;
@@ -164,11 +177,11 @@ void Goalpose::processValues()
   bool has_no_detection = std::any_of(names_.begin(), names_.end(),
     [](const std::string& name)
     {
-      return name == "No_detection";
+      return name == "none";
     }
   );
 
-  narrow_ = has_no_detection ? "No_detection" : names_.back();
+  narrow_ = has_no_detection ? "none" : names_.back();
 
   length_ = calculateAverage(positions_);
   angle_ = calculateAverage(velocities_);

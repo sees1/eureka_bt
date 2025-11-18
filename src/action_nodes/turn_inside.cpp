@@ -54,11 +54,19 @@ Turn_inside::Turn_inside(const std::string& name,
     {
       std::lock_guard<std::mutex> lc(mut_);
 
+      // collect only none and arrow:left/arrow:right
       if (!dry_run_)
       {
+        std::vector<int> v_idx;
+        for(size_t idx = 0; idx < msg->name.size(); ++idx)
+        {
+          if (msg->name[idx] != "cone:none")
+            v_idx.push_back(idx);
+        }
+
         double max = 0;
         size_t max_idx = 0;
-        for(size_t idx = 0; idx < msg->effort.size(); ++idx)
+        for(auto idx : v_idx)
         {
           if (msg->effort[idx] > max)
           {
@@ -75,10 +83,15 @@ Turn_inside::Turn_inside(const std::string& name,
           efforts_.pop_front();
         }
 
-        names_.push_back(msg->name[max_idx]);
-        positions_.push_back(msg->position[max_idx]);
-        velocities_.push_back(msg->velocity[max_idx]);
-        efforts_.push_back(msg->effort[max_idx]);
+        // if v_idx.size == 0 than we can't find any none or arrow detection, 
+        // only cone so don't add it
+        if (v_idx.size())
+        {
+          names_.push_back(msg->name[max_idx]);
+          positions_.push_back(msg->position[max_idx]);
+          velocities_.push_back(msg->velocity[max_idx]);
+          efforts_.push_back(msg->effort[max_idx]);
+        }
       }
     }
   );
@@ -111,7 +124,7 @@ BT::NodeStatus Turn_inside::onRunning()
       {
         is_robot_stop_ = stopRobot();
 
-        turn_narrow_ = "left";
+        turn_narrow_ = "arrow:left";
         return BT::NodeStatus::RUNNING;
       }
 
@@ -161,12 +174,12 @@ BT::NodeStatus Turn_inside::onRunning()
       }
 
       if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
-          narrow_ == "No_detection" ||
+          narrow_ == "none" ||
           too_far_length_ > 4.0)
         updateRotation(turn_narrow_);
       else
       {
-        turn_narrow_ = "No_detection";
+        turn_narrow_ = "none";
         is_robot_stop_ = false;
         turning_task_finished_ = true;
         stop_fire_once_ = false;
@@ -193,11 +206,11 @@ void Turn_inside::processValues()
   bool has_no_detection = std::any_of(names_.begin(), names_.end(),
     [](const std::string& name)
     {
-      return name == "No_detection";
+      return name == "none";
     }
   );
 
-  narrow_ = has_no_detection ? "No_detection" : names_.back();
+  narrow_ = has_no_detection ? "none" : names_.back();
 
   length_ = calculateAverage(positions_);
   angle_ = calculateAverage(velocities_);
@@ -250,11 +263,11 @@ void Turn_inside::updateRotation(std::string& turn_arrow)
   twist_msg.angular.y = 0.0;
   twist_msg.angular.z = 100.0;
 
-  if (turn_arrow == "left")
+  if (turn_arrow == "arrow:left")
   {
     twist_msg.linear.x = 0.2;
   }
-  else if (turn_arrow == "right")
+  else if (turn_arrow == "arrow:right")
   {
     twist_msg.linear.x = -0.2;
   }

@@ -75,7 +75,7 @@ private:
   std::deque<double>      velocities_;
   std::deque<double>      efforts_;
 
-  std::string narrow_ = "No_detection";
+  std::string narrow_ = "none";
   std::string turn_narrow_;
   double length_ = 0.0;
   double angle_ = 0.0;

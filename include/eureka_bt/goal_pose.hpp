@@ -66,7 +66,7 @@ private:
 
   std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
 
-  std::string narrow_ = "No_detection";
+  std::string narrow_ = "none";
   double length_ = 0.0;
   double angle_ = 0.0;
   double coef_ = 0.0;
