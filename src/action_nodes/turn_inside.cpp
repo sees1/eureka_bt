@@ -30,14 +30,16 @@ Turn_inside::Turn_inside(const std::string& name,
     buffer_size_ = static_cast<size_t>(node_->declare_parameter("buffer_size", 10));
 
   if (node_->has_parameter("dummy_rotate_duration"))
-    dummy_rotation_dur_ = static_cast<size_t>(node_->get_parameter("dummy_rotate_duration").as_double());
+    dummy_rotation_dur_ = node_->get_parameter("dummy_rotate_duration").as_double();
   else
-    dummy_rotation_dur_ = static_cast<size_t>(node_->declare_parameter("dummy_rotate_duration", 4.0));
+    dummy_rotation_dur_ = node_->declare_parameter("dummy_rotate_duration", 4.0);
 
   if (node_->has_parameter("too_far_distance"))
-    too_far_length_ = static_cast<size_t>(node_->get_parameter("too_far_distance").as_double());
+    too_far_length_ = node_->get_parameter("too_far_distance").as_double();
   else
-    too_far_length_ = static_cast<size_t>(node_->declare_parameter("too_far_distance", 4.0));
+    too_far_length_ = node_->declare_parameter("too_far_distance", 4.0);
+
+  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set dummy_rotate_duration = %f", dummy_rotation_dur_);
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
@@ -139,7 +141,7 @@ BT::NodeStatus Turn_inside::onRunning()
         updateRotation(turn_narrow_);
       else
       {
-        turn_narrow_ = "No_detection";
+        turn_narrow_ = "none";
         is_robot_stop_ = false;
         turning_task_finished_ = true;
         stop_fire_once_ = false;
@@ -175,10 +177,11 @@ BT::NodeStatus Turn_inside::onRunning()
 
       if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
           narrow_ == "none" ||
-          too_far_length_ > 4.0)
+          length_ > too_far_length_)
         updateRotation(turn_narrow_);
       else
       {
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
         turn_narrow_ = "none";
         is_robot_stop_ = false;
         turning_task_finished_ = true;
@@ -271,9 +274,14 @@ void Turn_inside::updateRotation(std::string& turn_arrow)
   {
     twist_msg.linear.x = -0.2;
   }
+  else if (turn_arrow == "none")
+  {
+    twist_msg.linear.x = -0.2;
+    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction but turn right!");
+  }
   else
   {
-    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction!");
+    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction and unmove direction!");
   }
 
   turn_pub_->publish(twist_msg);

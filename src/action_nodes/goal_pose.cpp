@@ -39,9 +39,14 @@ Goalpose::Goalpose(const std::string& name,
     odometry_topic_name_ = node_->declare_parameter("odometry_topic_name", "/odometry");
 
   if (node_->has_parameter("too_far_distance"))
-    too_far_length_ = static_cast<size_t>(node_->get_parameter("too_far_distance").as_double());
+    too_far_length_ = node_->get_parameter("too_far_distance").as_double();
   else
-    too_far_length_ = static_cast<size_t>(node_->declare_parameter("too_far_distance", 4.0));
+    too_far_length_ = node_->declare_parameter("too_far_distance", 4.0);
+
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set too_far_length = %f", too_far_length_);
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error = %f", lenght_error_);
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
 
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
@@ -126,7 +131,7 @@ BT::NodeStatus Goalpose::onRunning()
     {
       processValues();
 
-      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, after process values!", length_, narrow_.c_str(), coef_);
+      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
 
       if (already_published_)
       {
@@ -137,7 +142,7 @@ BT::NodeStatus Goalpose::onRunning()
         }
       }
       
-      if (too_far_length_ < 4.0 && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
+      if (length_ < too_far_length_ && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
       {
         publishGoalPose(length_, angle_);
         already_published_ = true;
