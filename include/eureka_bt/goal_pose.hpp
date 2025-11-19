@@ -59,6 +59,7 @@ private:
   rclcpp::Node::SharedPtr node_;
 
   eureka_bt::BasicNavigator navigator_;
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> go_to_pose_res_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr turn_pub_;

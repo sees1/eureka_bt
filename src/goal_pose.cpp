@@ -251,23 +251,21 @@ void Goalpose::publishGoalPose(double length, double angle)
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, path_yaw = %f)!", current_goal_x_, current_goal_y_, yaw);
 
-  navigator_.goToPose(goal);
+  go_to_pose_res_ = navigator_.goToPose(goal);
 }
 
 bool Goalpose::isRobotNearGoal()
 {
-  // bool fl = (std::hypot(std::abs(pose_x_ - current_goal_x_), std::abs(pose_y_ - current_goal_y_)) < 0.5);
+  bool fl = navigator_.isTaskComplete<nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
 
-  // if (fl)
-  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
+  if (fl)
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
 
-  // if (!fl && full_info_)
-  // {
-  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
-  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
-  // }
-
-  
+  if (!fl && full_info_)
+  {
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
+  }
 
   return fl;
 }

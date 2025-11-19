@@ -43,7 +43,7 @@ BasicNavigator::BasicNavigator(const std::string & node_name, const std::string 
 
 // ----------------------- Pose / nav API -----------------------
 
-bool BasicNavigator::goThroughPoses(const std::vector<geometry_msgs::msg::PoseStamped> & poses,
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses>::WrappedResult> BasicNavigator::goThroughPoses(const std::vector<geometry_msgs::msg::PoseStamped> & poses,
                                     const std::string & behavior_tree)
 {
   waitForActionServer<nav2_msgs::action::NavigateThroughPoses>(nav_through_poses_client_, "NavigateThroughPoses");
@@ -61,23 +61,21 @@ bool BasicNavigator::goThroughPoses(const std::vector<geometry_msgs::msg::PoseSt
   auto send_goal_future = nav_through_poses_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   nav_through_poses_goal_handle_ = send_goal_future.get();
   if (!nav_through_poses_goal_handle_ || 
        nav_through_poses_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
-    return false;
+    return {};
   }
 
   // store result future
-  auto result_future = nav_through_poses_client_->async_get_result(nav_through_poses_goal_handle_);
-  (void)result_future; // user can spin elsewhere to get
-  return true;
+  return nav_through_poses_client_->async_get_result(nav_through_poses_goal_handle_);
 }
 
-bool BasicNavigator::goToPose(const geometry_msgs::msg::PoseStamped & pose, const std::string & behavior_tree)
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> BasicNavigator::goToPose(const geometry_msgs::msg::PoseStamped & pose, const std::string & behavior_tree)
 {
   waitForActionServer<nav2_msgs::action::NavigateToPose>(nav_to_pose_client_, "NavigateToPose");
 
@@ -95,22 +93,20 @@ bool BasicNavigator::goToPose(const geometry_msgs::msg::PoseStamped & pose, cons
   auto send_goal_future = nav_to_pose_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   nav_to_pose_goal_handle_ = send_goal_future.get();
   if (!nav_to_pose_goal_handle_ ||
        nav_to_pose_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
-    return false;
+    return {};
   }
 
-  auto result_future = nav_to_pose_client_->async_get_result(nav_to_pose_goal_handle_);
-  (void)result_future;
-  return true;
+  return nav_to_pose_client_->async_get_result(nav_to_pose_goal_handle_);
 }
 
-bool BasicNavigator::followWaypoints(const std::vector<geometry_msgs::msg::PoseStamped> & poses)
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowWaypoints>::WrappedResult> BasicNavigator::followWaypoints(const std::vector<geometry_msgs::msg::PoseStamped> & poses)
 {
   waitForActionServer<nav2_msgs::action::FollowWaypoints>(follow_waypoints_client_, "FollowWaypoints");
 
@@ -126,22 +122,20 @@ bool BasicNavigator::followWaypoints(const std::vector<geometry_msgs::msg::PoseS
   auto send_goal_future = follow_waypoints_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   follow_waypoints_goal_handle_ = send_goal_future.get();
   if (!follow_waypoints_goal_handle_ || 
        follow_waypoints_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
-    return false;
+    return {};
   }
 
-  auto result_future = follow_waypoints_client_->async_get_result(follow_waypoints_goal_handle_);
-  (void)result_future;
-  return true;
+  return follow_waypoints_client_->async_get_result(follow_waypoints_goal_handle_);
 }
 
-bool BasicNavigator::followPath(const nav_msgs::msg::Path& path,
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowPath>::WrappedResult> BasicNavigator::followPath(const nav_msgs::msg::Path& path,
                                 const std::string& controller_id,
                                 const std::string& goal_checker_id)
 {
@@ -162,23 +156,20 @@ bool BasicNavigator::followPath(const nav_msgs::msg::Path& path,
       rclcpp::FutureReturnCode::SUCCESS)
   {
       RCLCPP_ERROR(get_logger(), "Failed to send FollowPath goal");
-      return false;
+      return {};
   }
 
-  auto goal_handle = future_handle.get();
-  if (!goal_handle || 
-       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+  follow_path_goal_handle_ = future_handle.get();
+  if (!follow_path_goal_handle_ || 
+       follow_path_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
       RCLCPP_ERROR(get_logger(), "FollowPath goal rejected!");
-      return false;
+      return {};
   }
 
-  // Сохраняем текущий goal handle
-  follow_path_goal_handle_ = goal_handle;
-
-  return true;
+  return follow_path_client_->async_get_result(follow_path_goal_handle_);
 }
 
-bool BasicNavigator::spin(double spin_dist, int time_allowance)
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::Spin>::WrappedResult> BasicNavigator::spin(double spin_dist, int time_allowance)
 {
   waitForActionServer<nav2_msgs::action::Spin>(spin_client_, "Spin");
 
@@ -195,22 +186,20 @@ bool BasicNavigator::spin(double spin_dist, int time_allowance)
   auto send_goal_future = spin_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   spin_goal_handle_ = send_goal_future.get();
   if (!spin_goal_handle_ || 
        spin_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Spin request was rejected!");
-    return false;
+    return {};
   }
 
-  auto result_future = spin_client_->async_get_result(spin_goal_handle_);
-  (void)result_future;
-  return true;
+  return spin_client_->async_get_result(spin_goal_handle_);
 }
 
-bool BasicNavigator::backup(double backup_dist, double backup_speed, int time_allowance)
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::BackUp>::WrappedResult> BasicNavigator::backup(double backup_dist, double backup_speed, int time_allowance)
 {
   waitForActionServer<nav2_msgs::action::BackUp>(backup_client_, "BackUp");
 
@@ -228,22 +217,20 @@ bool BasicNavigator::backup(double backup_dist, double backup_speed, int time_al
   auto send_goal_future = backup_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   backup_goal_handle_ = send_goal_future.get();
   if (!backup_goal_handle_ || 
        backup_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Backup request was rejected!");
-    return false;
+    return {};
   }
 
-  auto result_future = backup_client_->async_get_result(backup_goal_handle_);
-  (void)result_future;
-  return true;
+  return backup_client_->async_get_result(backup_goal_handle_);
 }
 
-bool BasicNavigator::assistedTeleop(int time_allowance)
+std::shared_future<rclcpp_action::Client<nav2_msgs::action::AssistedTeleop>::WrappedResult> BasicNavigator::assistedTeleop(int time_allowance)
 {
   waitForActionServer<nav2_msgs::action::AssistedTeleop>(assisted_teleop_client_, "AssistedTeleop");
 
@@ -259,19 +246,17 @@ bool BasicNavigator::assistedTeleop(int time_allowance)
   auto send_goal_future = assisted_teleop_client_->async_send_goal(goal_msg, send_goal_opts);
   if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), send_goal_future) != rclcpp::FutureReturnCode::SUCCESS) {
     RCLCPP_ERROR(this->get_logger(), "send_goal failed");
-    return false;
+    return {};
   }
 
   assisted_teleop_goal_handle_ = send_goal_future.get();
   if (!assisted_teleop_goal_handle_ || 
        assisted_teleop_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Assisted teleop request was rejected!");
-    return false;
+    return {};
   }
 
-  auto result_future = assisted_teleop_client_->async_get_result(assisted_teleop_goal_handle_);
-  (void)result_future;
-  return true;
+  return assisted_teleop_client_->async_get_result(assisted_teleop_goal_handle_);
 }
 
 // ----------------------- Path utilities -----------------------
@@ -397,72 +382,45 @@ nav2_msgs::action::SmoothPath::Result BasicNavigator::smoothPath(const nav_msgs:
 
 // ----------------------- Misc ------------------------------------------
 
-void BasicNavigator::cancelTask()
-{
-    RCLCPP_INFO(this->get_logger(), "Canceling current task.");
+// template<typename ActionT>
+// void BasicNavigator::cancelTask(rclcpp_action::Client<nav2_msgs::action::AssistedTeleop>::SharedFuture)
+// {
+//     RCLCPP_INFO(this->get_logger(), "Canceling current task.");
 
-    if (goal_handle_) {
-        auto cancel_future = goal_handle_->async_cancel_goal();
+//     if (goal_handle_) {
+//         auto cancel_future = goal_handle_->async_cancel_goal();
 
-        // Ждём завершения
-        if (rclcpp::spin_until_future_complete(
-                shared_from_this(), cancel_future) 
-            != rclcpp::FutureReturnCode::SUCCESS)
-        {
-            RCLCPP_WARN(this->get_logger(), "Failed to cancel goal");
-        }
-    }
-}
+//         // Ждём завершения
+//         if (rclcpp::spin_until_future_complete(
+//                 shared_from_this(), cancel_future) 
+//             != rclcpp::FutureReturnCode::SUCCESS)
+//         {
+//             RCLCPP_WARN(this->get_logger(), "Failed to cancel goal");
+//         }
+//     }
+// }
 
-bool BasicNavigator::isTaskComplete()
-{
-    if (!result_future_.valid()) {
-        return true;   // задача уже завершена или отменена
-    }
+// TaskResult BasicNavigator::getResult()
+// {
+//     switch (status_) {
+//         case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
+//             return TaskResult::SUCCEEDED;
 
-    auto ret = rclcpp::spin_until_future_complete(
-        shared_from_this(), result_future_, std::chrono::milliseconds(100));
+//         case action_msgs::msg::GoalStatus::STATUS_ABORTED:
+//             return TaskResult::FAILED;
 
-    if (ret == rclcpp::FutureReturnCode::TIMEOUT) {
-        return false;  // всё ещё выполняется
-    }
+//         case action_msgs::msg::GoalStatus::STATUS_CANCELED:
+//             return TaskResult::CANCELED;
 
-    if (ret == rclcpp::FutureReturnCode::SUCCESS) {
-        status_ = result_future_.get()->status;
+//         default:
+//             return TaskResult::UNKNOWN;
+//     }
+// }
 
-        if (status_ != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
-            RCLCPP_DEBUG(this->get_logger(), "Task failed with status: %d", status_);
-            return true;
-        }
-
-        RCLCPP_DEBUG(this->get_logger(), "Task succeeded!");
-        return true;
-    }
-
-    return true;  // в случае UNKNOWN считаем завершённым
-}
-
-TaskResult BasicNavigator::getResult()
-{
-    switch (status_) {
-        case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
-            return TaskResult::SUCCEEDED;
-
-        case action_msgs::msg::GoalStatus::STATUS_ABORTED:
-            return TaskResult::FAILED;
-
-        case action_msgs::msg::GoalStatus::STATUS_CANCELED:
-            return TaskResult::CANCELED;
-
-        default:
-            return TaskResult::UNKNOWN;
-    }
-}
-
-geometry_msgs::msg::PoseWithCovarianceStamped BasicNavigator::getFeedback()
-{
-    return feedback_;
-}
+// geometry_msgs::msg::PoseWithCovarianceStamped BasicNavigator::getFeedback()
+// {
+//     return feedback_;
+// }
 
 // ----------------------- Costmap / map utilities -----------------------
 

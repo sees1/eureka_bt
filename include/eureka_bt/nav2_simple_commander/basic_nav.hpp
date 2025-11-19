@@ -44,17 +44,17 @@ public:
   ~BasicNavigator() override = default;
 
   // Pose / navigation API
-  bool goToPose(const geometry_msgs::msg::PoseStamped & pose,
-                const std::string & behavior_tree = "");
-  bool goThroughPoses(const std::vector<geometry_msgs::msg::PoseStamped> & poses,
-                      const std::string & behavior_tree = "");
-  bool followWaypoints(const std::vector<geometry_msgs::msg::PoseStamped> & poses);
-  bool followPath(const nav_msgs::msg::Path & path,
-                  const std::string & controller_id = "",
-                  const std::string & goal_checker_id = "");
-  bool spin(double spin_dist = 1.57, int time_allowance = 10);
-  bool backup(double backup_dist = 0.15, double backup_speed = 0.025, int time_allowance = 10);
-  bool assistedTeleop(int time_allowance = 30);
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> goToPose(const geometry_msgs::msg::PoseStamped & pose,
+                                                                                  const std::string & behavior_tree = "");
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses>::WrappedResult> goThroughPoses(const std::vector<geometry_msgs::msg::PoseStamped> & poses,
+                                                                                              const std::string & behavior_tree = "");
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowWaypoints>::WrappedResult> followWaypoints(const std::vector<geometry_msgs::msg::PoseStamped> & poses);
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowPath>::WrappedResult> followPath(const nav_msgs::msg::Path & path,
+                                                                                const std::string & controller_id = "",
+                                                                                const std::string & goal_checker_id = "");
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::Spin>::WrappedResult> spin(double spin_dist = 1.57, int time_allowance = 10);
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::BackUp>::WrappedResult> backup(double backup_dist = 0.15, double backup_speed = 0.025, int time_allowance = 10);
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::AssistedTeleop>::WrappedResult> assistedTeleop(int time_allowance = 30);
 
   // Path utilities
   nav_msgs::msg::Path getPath(const geometry_msgs::msg::PoseStamped & start,
@@ -71,10 +71,38 @@ public:
                                                    bool check_for_collision = false);
 
   // Misc
-  void cancelTask();
-  bool isTaskComplete();
-  TaskResult getResult();
-  geometry_msgs::msg::PoseWithCovarianceStamped getFeedback();
+  // template<class ActionT>
+  // void cancelTask(rclcpp_action::Client<ActionT>::SharedFuture);
+  template<class ActionT>
+  bool isTaskComplete(std::shared_future<typename rclcpp_action::Client<ActionT>::WrappedResult> result_future)
+  {
+    if (!result_future.valid()) {
+      return true;   // задача уже завершена или отменена
+    }
+
+    auto ret = rclcpp::spin_until_future_complete(
+      shared_from_this(), result_future, std::chrono::milliseconds(100));
+
+    if (ret == rclcpp::FutureReturnCode::TIMEOUT) {
+      return false;  // всё ещё выполняется
+    }
+
+    if (ret == rclcpp::FutureReturnCode::SUCCESS) {
+      status_ = result_future.get().code;
+
+      if ((int8_t)status_ != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+        RCLCPP_DEBUG(this->get_logger(), "Task failed!");
+        return true;
+      }
+
+      RCLCPP_DEBUG(this->get_logger(), "Task succeeded!");
+      return true;
+    }
+
+    return true;  // в случае UNKNOWN считаем завершённым
+  }
+  // TaskResult getResult();
+  // geometry_msgs::msg::PoseWithCovarianceStamped getFeedback();
 
   void clearLocalCostmap();
   void clearGlobalCostmap();
@@ -136,6 +164,8 @@ private:
   rclcpp::Client<nav2_msgs::srv::ClearEntireCostmap>::SharedPtr clear_costmap_local_srv_;
   rclcpp::Client<nav2_msgs::srv::GetCostmap>::SharedPtr get_costmap_global_srv_;
   rclcpp::Client<nav2_msgs::srv::GetCostmap>::SharedPtr get_costmap_local_srv_;
+
+  rclcpp_action::ResultCode status_;
 };
 
 } // namespace eureka_bt
