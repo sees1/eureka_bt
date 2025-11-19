@@ -34,7 +34,6 @@ public:
   
 private:
   bool isRobotNearGoal();
-  bool stopRobot();
   void publishGoalPose(double length, double angle);
 
 private:
@@ -61,18 +60,12 @@ private:
   std::shared_ptr<eureka_bt::BasicNavigator> navigator_;
   std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> go_to_pose_res_;
 
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr turn_pub_;
-
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
 
   bool already_published_;
   double current_goal_x_;
   double current_goal_y_;
-
-  bool is_robot_stop_ = false;
-  bool stop_fire_once_ = false;
-  std::chrono::time_point<std::chrono::steady_clock> stop_time_point_;
 
   std::string narrow_ = "none";
   double length_ = 0.0;

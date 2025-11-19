@@ -2,6 +2,8 @@
 #include <chrono>
 #include <eureka_bt/goal_pose.hpp>
 #include <eureka_bt/turn_inside.hpp>
+#include <eureka_bt/rotate_wheels.hpp>
+#include <eureka_bt/stop_robot.hpp>
 #include <behaviortree_cpp_v3/bt_factory.h> 
 #include <behaviortree_cpp_v3/action_node.h>
 #include <behaviortree_cpp_v3/bt_factory.h>
@@ -29,6 +31,8 @@ int main(int argc, char **argv) {
 
   BT::BehaviorTreeFactory factory;
 
+  register_action<StopRobot>("Stop_robot", factory, nh);
+  register_action<RotateWheels>("Rotate_wheels", factory, nh);
   register_action<Goalpose>("Goal_pose", factory, nh);
   register_action<Turn_inside>("Turn_inside", factory, nh);
 

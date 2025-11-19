@@ -61,19 +61,10 @@ private:
   
   // processing flag's
   bool turning_task_finished_;
-  bool is_robot_stop_;
-  bool is_robot_rotate_wheels_;
-  
-  // stop logic parameter's
-  bool stop_fire_once_;
-  std::chrono::time_point<std::chrono::steady_clock> last_time_point_;
 
   // rotate logic parameter's
   bool rotate_fire_once_;
   std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
-
-  bool rotate_wheels_fire_once_;
-  std::chrono::time_point<std::chrono::steady_clock> rotate_wheel_time_point_;
   
   // arrow logic substracted from cv node
   std::deque<std::string> names_;

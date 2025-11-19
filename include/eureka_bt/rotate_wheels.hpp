@@ -6,11 +6,11 @@
 
 #include <geometry_msgs/msg/twist.hpp>
 
-class StopRobot : public BT::StatefulActionNode {
+class RotateWheels : public BT::StatefulActionNode {
 public:
-  StopRobot(const std::string& name,
-            const BT::NodeConfiguration& config,
-            rclcpp::Node::SharedPtr node);
+  RotateWheels(const std::string& name,
+               const BT::NodeConfiguration& config,
+               rclcpp::Node::SharedPtr node);
 
   static BT::PortsList providedPorts() { return BT::PortsList(); };
 
@@ -20,12 +20,12 @@ public:
   
 private:
   // ros parameters
-  double stop_duration_;
+  double rotate_duration_;
 
 private:
   rclcpp::Node::SharedPtr node_;
-  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr stop_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr rotate_pub_;
   
-  std::chrono::time_point<std::chrono::steady_clock> stop_time_point_;
+  std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
   geometry_msgs::msg::Twist twist_msg_;
 };

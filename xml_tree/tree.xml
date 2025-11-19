@@ -1,8 +1,11 @@
 <root BTCPP_format="4">
     <BehaviorTree ID="MainTree">
         <Sequence name="movements">
-            <Goal_pose    name = "Goal_pose"/>
-            <Turn_inside  name = "Turn_inside"/>
+            <Goal_pose     name = "Goal_pose"/>
+            <Stop_robot    name = "Stop_robot_first_blood"/>
+            <Rotate_wheels name = "Rotate_wheels_first_blood"/>
+            <Turn_inside   name = "Turn_inside"/>
+            <Stop_robot    name = "Stop_robot_second_come"/>
         </Sequence>
     </BehaviorTree>
 </root>
