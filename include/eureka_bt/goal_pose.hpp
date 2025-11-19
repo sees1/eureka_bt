@@ -47,6 +47,10 @@ private:
   double too_far_length_;
   std::string odometry_topic_name_;
 
+  // rover constraints
+  float base_length = 1.0f;
+  float body_width = 0.5f;
+
 private:
   rclcpp::Node::SharedPtr node_;
 

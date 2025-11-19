@@ -96,13 +96,20 @@ Goalpose::Goalpose(const std::string& name,
         }
 
         // if v_idx.size == 0 than we can't find any none or arrow detection, 
-        // only cone so don't add it
+        // only cone so add none
         if (v_idx.size())
         {
           names_.push_back(msg->name[max_idx]);
           positions_.push_back(msg->position[max_idx]);
           velocities_.push_back(msg->velocity[max_idx]);
           efforts_.push_back(msg->effort[max_idx]);
+        }
+        else
+        {
+          names_.push_back("none");
+          positions_.push_back(0.0);
+          velocities_.push_back(0.0);
+          efforts_.push_back(0.0);
         }
       }
     }
@@ -211,8 +218,11 @@ void Goalpose::publishGoalPose(double length, double angle)
   goal.header.frame_id = "map"; 
 
   double yaw = atan2(2.0 * (quat_w_ * quat_z_ + quat_x_ * quat_y_), 1.0 - 2.0 * (quat_y_ * quat_y_ + quat_z_ * quat_z_));
-  double local_goal_x = (length + lenght_error_);
-  double local_goal_y = (length + lenght_error_) * sin((-angle * M_PI) / 180); 
+  // lenght in robot frame
+  double local_goal_x = (length + lenght_error_) * cos((-angle * M_PI) / 180);
+  double local_goal_y = (length + lenght_error_) * sin((-angle * M_PI) / 180) + body_width / 2.0f; // because lenght is dist between cam and arrow
+  
+  // goal = lenght in global_frame + robot_pose(in global_frame)
   current_goal_x_ = pose_x_ + (local_goal_x * cos(yaw) - local_goal_y * sin(yaw));
   current_goal_y_ = pose_y_ + (local_goal_x * sin(yaw) + local_goal_y * cos(yaw));
 
