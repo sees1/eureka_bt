@@ -71,8 +71,49 @@ public:
                                                    bool check_for_collision = false);
 
   // Misc
-  // template<class ActionT>
-  // void cancelTask(rclcpp_action::Client<ActionT>::SharedFuture);
+
+  template<typename ActionT>
+  typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr getGoalByType()
+  {
+    if constexpr (std::is_same_v<ActionT, nav2_msgs::action::NavigateToPose>)
+      return nav_to_pose_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::NavigateThroughPoses>)
+      return nav_through_poses_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::FollowWaypoints>)
+      return follow_waypoints_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::FollowPath>)
+      return follow_path_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::Spin>) 
+      return spin_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::BackUp>) 
+      return backup_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::BackUp>) 
+      return backup_goal_handle_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::AssistedTeleop>) 
+      return assisted_teleop_goal_handle_;
+    else
+      static_assert(!sizeof(ActionT), "Unsupported type");
+  }
+
+  template<typename ActionT>
+  void cancelTask()
+  {
+    RCLCPP_INFO(this->get_logger(), "Canceling current task.");
+
+    typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr goal_handle_ = 
+      getGoalByType<ActionT>();
+
+    if (goal_handle_) {
+        auto cancel_future = goal_handle_->async_cancel_goal();
+
+        // Ждём завершения
+        if (rclcpp::spin_until_future_complete(shared_from_this(), cancel_future) != rclcpp::FutureReturnCode::SUCCESS)
+        {
+            RCLCPP_WARN(this->get_logger(), "Failed to cancel goal");
+        }
+    }
+  }
+
   template<class ActionT>
   bool isTaskComplete(std::shared_future<typename rclcpp_action::Client<ActionT>::WrappedResult> result_future)
   {

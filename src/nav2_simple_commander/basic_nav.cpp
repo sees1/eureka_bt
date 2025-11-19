@@ -66,7 +66,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateThroughPoses
 
   nav_through_poses_goal_handle_ = send_goal_future.get();
   if (!nav_through_poses_goal_handle_ || 
-       nav_through_poses_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       nav_through_poses_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
     return {};
   }
@@ -98,7 +98,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::Wra
 
   nav_to_pose_goal_handle_ = send_goal_future.get();
   if (!nav_to_pose_goal_handle_ ||
-       nav_to_pose_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       nav_to_pose_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
     return {};
   }
@@ -127,7 +127,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowWaypoints>::Wr
 
   follow_waypoints_goal_handle_ = send_goal_future.get();
   if (!follow_waypoints_goal_handle_ || 
-       follow_waypoints_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       follow_waypoints_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
     return {};
   }
@@ -161,7 +161,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::FollowPath>::Wrapped
 
   follow_path_goal_handle_ = future_handle.get();
   if (!follow_path_goal_handle_ || 
-       follow_path_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       follow_path_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
       RCLCPP_ERROR(get_logger(), "FollowPath goal rejected!");
       return {};
   }
@@ -191,7 +191,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::Spin>::WrappedResult
 
   spin_goal_handle_ = send_goal_future.get();
   if (!spin_goal_handle_ || 
-       spin_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       spin_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Spin request was rejected!");
     return {};
   }
@@ -222,7 +222,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::BackUp>::WrappedResu
 
   backup_goal_handle_ = send_goal_future.get();
   if (!backup_goal_handle_ || 
-       backup_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       backup_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Backup request was rejected!");
     return {};
   }
@@ -251,7 +251,7 @@ std::shared_future<rclcpp_action::Client<nav2_msgs::action::AssistedTeleop>::Wra
 
   assisted_teleop_goal_handle_ = send_goal_future.get();
   if (!assisted_teleop_goal_handle_ || 
-       assisted_teleop_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       assisted_teleop_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Assisted teleop request was rejected!");
     return {};
   }
@@ -283,7 +283,7 @@ nav_msgs::msg::Path BasicNavigator::getPath(const geometry_msgs::msg::PoseStampe
 
   auto goal_handle = send_goal_future.get();
   if (!goal_handle || 
-       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Get path was rejected!");
     return {};
   }
@@ -324,7 +324,7 @@ nav_msgs::msg::Path BasicNavigator::getPathThroughPoses(const geometry_msgs::msg
 
   auto goal_handle = send_goal_future.get();
   if (!goal_handle || 
-       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Get path was rejected!");
     return {};
   }
@@ -365,7 +365,7 @@ nav2_msgs::action::SmoothPath::Result BasicNavigator::smoothPath(const nav_msgs:
 
   auto goal_handle = send_goal_future.get();
   if (!goal_handle ||
-       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+       goal_handle->get_status() != action_msgs::msg::GoalStatus::STATUS_ACCEPTED) {
     RCLCPP_ERROR(this->get_logger(), "Smooth path was rejected!");
     return {};
   }
@@ -379,48 +379,6 @@ nav2_msgs::action::SmoothPath::Result BasicNavigator::smoothPath(const nav_msgs:
   auto result = result_future.get();
   return *result.result;
 }
-
-// ----------------------- Misc ------------------------------------------
-
-// template<typename ActionT>
-// void BasicNavigator::cancelTask(rclcpp_action::Client<nav2_msgs::action::AssistedTeleop>::SharedFuture)
-// {
-//     RCLCPP_INFO(this->get_logger(), "Canceling current task.");
-
-//     if (goal_handle_) {
-//         auto cancel_future = goal_handle_->async_cancel_goal();
-
-//         // Ждём завершения
-//         if (rclcpp::spin_until_future_complete(
-//                 shared_from_this(), cancel_future) 
-//             != rclcpp::FutureReturnCode::SUCCESS)
-//         {
-//             RCLCPP_WARN(this->get_logger(), "Failed to cancel goal");
-//         }
-//     }
-// }
-
-// TaskResult BasicNavigator::getResult()
-// {
-//     switch (status_) {
-//         case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
-//             return TaskResult::SUCCEEDED;
-
-//         case action_msgs::msg::GoalStatus::STATUS_ABORTED:
-//             return TaskResult::FAILED;
-
-//         case action_msgs::msg::GoalStatus::STATUS_CANCELED:
-//             return TaskResult::CANCELED;
-
-//         default:
-//             return TaskResult::UNKNOWN;
-//     }
-// }
-
-// geometry_msgs::msg::PoseWithCovarianceStamped BasicNavigator::getFeedback()
-// {
-//     return feedback_;
-// }
 
 // ----------------------- Costmap / map utilities -----------------------
 
@@ -544,7 +502,7 @@ void BasicNavigator::_waitForNodeToActivate(const std::string & node_name)
   while (state != "active") {
     auto f = state_client->async_send_request(req);
     rclcpp::spin_until_future_complete(this->get_node_base_interface(), f);
-    if (f.valid() && f.get()) {
+    if (f.valid()) {
       state = f.get()->current_state.label;
       RCLCPP_DEBUG(this->get_logger(), "Result of get_state: %s", state.c_str());
     }

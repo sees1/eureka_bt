@@ -5,23 +5,18 @@ Goalpose::Goalpose(const std::string& name,
                    rclcpp::Node::SharedPtr node)
 : BT::StatefulActionNode(name, config),
   node_(node),
-  already_published_(false),
-  pose_x_(0.0),
-  pose_y_(0.0),
-  quat_w_(0.0),
-  quat_x_(0.0),
-  quat_y_(0.0),
-  quat_z_(0.0)
+  navigator_(std::make_shared<eureka_bt::BasicNavigator>()),
+  already_published_(false)
 {
   if (node_->has_parameter("full_info"))
     full_info_ = node_->get_parameter("full_info").as_bool();
   else
     full_info_ = node_->declare_parameter("full_info", true);
   
-  if (node_->has_parameter("lenght_error"))
-    lenght_error_ = node_->get_parameter("lenght_error").as_double();
+  if (node_->has_parameter("length_error_delta"))
+    length_error_delta_ = node_->get_parameter("length_error_delta").as_double();
   else
-    lenght_error_ = node_->declare_parameter("lenght_error", -1.6);
+    length_error_delta_ = node_->declare_parameter("length_error_delta", -0.3);
 
   if (node_->has_parameter("buffer_size"))
     buffer_size_ = static_cast<size_t>(node_->get_parameter("buffer_size").as_int());
@@ -44,21 +39,22 @@ Goalpose::Goalpose(const std::string& name,
     too_far_length_ = node_->declare_parameter("too_far_distance", 4.0);
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set too_far_length = %f", too_far_length_);
-  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error = %f", lenght_error_);
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error_delta = %f", length_error_delta_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
   
-  navigator_.waitUntilNav2Active();
+  navigator_->waitUntilNav2Active();
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
     {
-      pose_x_ = msg->pose.pose.position.x;
-      pose_y_ = msg->pose.pose.position.y;
-      quat_w_ = msg->pose.pose.orientation.w;
-      quat_x_ = msg->pose.pose.orientation.x;
-      quat_y_ = msg->pose.pose.orientation.y;
-      quat_z_ = msg->pose.pose.orientation.z;
+      current_robot_pose_.pose.position.x = msg->pose.pose.position.x;
+      current_robot_pose_.pose.position.y = msg->pose.pose.position.y;
+      current_robot_pose_.pose.position.z = msg->pose.pose.position.z;
+      current_robot_pose_.pose.orientation.x = msg->pose.pose.orientation.x;
+      current_robot_pose_.pose.orientation.y = msg->pose.pose.orientation.y;
+      current_robot_pose_.pose.orientation.z = msg->pose.pose.orientation.z;
+      current_robot_pose_.pose.orientation.w = msg->pose.pose.orientation.w;
     }
   );
 
@@ -116,7 +112,6 @@ Goalpose::Goalpose(const std::string& name,
     }
   );
 
-  goal_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/goal_pose", 10);
   turn_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 }
 
@@ -153,14 +148,10 @@ BT::NodeStatus Goalpose::onRunning()
       {
         if (isRobotNearGoal())
         {
-          if (waitNav())
-          {
-            wait_nav_fire_once_ = false;
-            is_robot_stop_ = false;
-            stop_fire_once_ = false;
-            already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
-            return BT::NodeStatus::SUCCESS;
-          }
+          is_robot_stop_ = false;
+          stop_fire_once_ = false;
+          already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
+          return BT::NodeStatus::SUCCESS;
         }
       }
       
@@ -227,36 +218,60 @@ double Goalpose::calculateAverage(const std::deque<double>& values)
 
 void Goalpose::publishGoalPose(double length, double angle) 
 {
-  geometry_msgs::msg::PoseStamped goal;
+  current_goal_.header.stamp = node_->now();
+  current_goal_.header.frame_id = "map"; 
 
-  goal.header.stamp = node_->now();
-  goal.header.frame_id = "map"; 
+  double yaw = atan2(2.0 * (current_robot_pose_.pose.orientation.w * current_robot_pose_.pose.orientation.z +
+                            current_robot_pose_.pose.orientation.x * current_robot_pose_.pose.orientation.y),
+                     1.0 - 2.0 * (current_robot_pose_.pose.orientation.y * current_robot_pose_.pose.orientation.y + 
+                                  current_robot_pose_.pose.orientation.z * current_robot_pose_.pose.orientation.z));
 
-  double yaw = atan2(2.0 * (quat_w_ * quat_z_ + quat_x_ * quat_y_), 1.0 - 2.0 * (quat_y_ * quat_y_ + quat_z_ * quat_z_));
+  double before_length = length;
+
+  length -= length_error_delta_;
+
   // lenght in robot frame
-  double local_goal_x = (length + lenght_error_) * cos((-angle * M_PI) / 180);
-  double local_goal_y = (length + lenght_error_) * sin((-angle * M_PI) / 180) + body_width / 2.0f; // because lenght is dist between cam and arrow
+  double local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
+  double local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
   
   // goal = lenght in global_frame + robot_pose(in global_frame)
-  current_goal_x_ = pose_x_ + (local_goal_x * cos(yaw) - local_goal_y * sin(yaw));
-  current_goal_y_ = pose_y_ + (local_goal_x * sin(yaw) + local_goal_y * cos(yaw));
+  current_goal_.pose.position.x = current_robot_pose_.pose.position.x + (local_goal_x * cos(yaw) - local_goal_y * sin(yaw));
+  current_goal_.pose.position.y = current_robot_pose_.pose.position.y + (local_goal_x * sin(yaw) + local_goal_y * cos(yaw)) + body_width / 2.0f; // because lenght is dist between cam and arrow
+  current_goal_.pose.position.z = 0.0;
+  current_goal_.pose.orientation.x = current_robot_pose_.pose.orientation.x;
+  current_goal_.pose.orientation.y = current_robot_pose_.pose.orientation.y;
+  current_goal_.pose.orientation.z = current_robot_pose_.pose.orientation.z;
+  current_goal_.pose.orientation.w = current_robot_pose_.pose.orientation.w;
 
-  goal.pose.position.x = current_goal_x_;
-  goal.pose.position.y = current_goal_y_;
-  goal.pose.position.z = 0.0;
-  goal.pose.orientation.x = quat_x_;
-  goal.pose.orientation.y = quat_y_;
-  goal.pose.orientation.z = quat_z_;
-  goal.pose.orientation.w = quat_w_;
+  nav_msgs::msg::Path current_path = navigator_->getPath(current_robot_pose_, current_goal_);
+  
+  while (current_path.poses.empty())
+  {
+    length -= length_error_delta_;
 
-  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, path_yaw = %f)!", current_goal_x_, current_goal_y_, yaw);
+    local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
+    local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
+  
+    current_goal_.pose.position.x = current_robot_pose_.pose.position.x + (local_goal_x * cos(yaw) - local_goal_y * sin(yaw));
+    current_goal_.pose.position.y = current_robot_pose_.pose.position.y + (local_goal_x * sin(yaw) + local_goal_y * cos(yaw)) + body_width / 2.0f; // because lenght is dist between cam and arrow
+    current_goal_.pose.position.z = 0.0;
+    current_goal_.pose.orientation.x = current_robot_pose_.pose.orientation.x;
+    current_goal_.pose.orientation.y = current_robot_pose_.pose.orientation.y;
+    current_goal_.pose.orientation.z = current_robot_pose_.pose.orientation.z;
+    current_goal_.pose.orientation.w = current_robot_pose_.pose.orientation.w;
 
-  go_to_pose_res_ = navigator_.goToPose(goal);
+    current_path = navigator_->getPath(current_robot_pose_, current_goal_);
+  }
+
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, end_yaw = %f)!", current_goal_.pose.position.x, current_goal_.pose.position.y, yaw);
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Length of path cropped from %f to %f!", before_length, length);
+
+  go_to_pose_res_ = navigator_->goToPose(current_goal_);
 }
 
 bool Goalpose::isRobotNearGoal()
 {
-  bool fl = navigator_.isTaskComplete<nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
+  bool fl = navigator_->isTaskComplete<typename nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
 
   if (fl)
     RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
@@ -264,28 +279,10 @@ bool Goalpose::isRobotNearGoal()
   if (!fl && full_info_)
   {
     RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
+    // RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
   }
 
   return fl;
-}
-
-bool Goalpose::waitNav()
-{
-  if (!wait_nav_fire_once_)
-  {
-    wait_nav_point_ = std::chrono::steady_clock::now();
-    wait_nav_fire_once_ = true;
-  }
-
-  RCLCPP_INFO(node_->get_logger(), "(Goalpose) wait until nav2 finish path");
-
-  double dt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wait_nav_point_).count() / 1000.0;
-
-  if (dt > 3.0)
-    return true;
-  else
-    return false;
 }
 
 bool Goalpose::stopRobot()
