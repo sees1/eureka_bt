@@ -3,11 +3,22 @@
 <package format="3">
   <name>eureka_bt</name>
   <version>0.0.0</version>
-  <description>TODO: Package description</description>
-  <maintainer email="kolomiyets@todo.todo">kolomiyets</maintainer>
+  <description>Top-level bt for eureka robot</description>
+  <maintainer email="sewa.egorov@yandex.ru">Vsevolod Egorov</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rclcpputils</depend>
+  <depend>rclcpp_actions</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>action_msgs</depend>
+  <depend>nav2_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>behaviortree_cpp_v3</depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

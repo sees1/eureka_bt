@@ -16,12 +16,10 @@
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
-#include "nav2_simple_commander/basic_nav.hpp"
 
-
-class Goalpose : public BT::StatefulActionNode {
+class StopRobot : public BT::StatefulActionNode {
 public:
-  Goalpose(const std::string& name,
+  StopRobot(const std::string& name,
            const BT::NodeConfiguration& config,
            rclcpp::Node::SharedPtr node);
 
@@ -55,8 +53,6 @@ private:
 
 private:
   rclcpp::Node::SharedPtr node_;
-
-  eureka_bt::BasicNavigator navigator_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr goal_pub_;
 

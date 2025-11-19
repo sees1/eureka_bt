@@ -7,17 +7,17 @@ endif()
 
 # Find dependencies
 set(THIS_PACKAGE_INCLUDE_DEPENDS
+  rclcpp
+  rcpputils
+  rclcpp_action
   sensor_msgs
   geometry_msgs
   nav_msgs
-  behaviortree_cpp_v3
-  rclcpp
-  rcpputils
   std_msgs
-  tf2
-  rclcpp_action
   nav2_msgs
-  # behaviortree_ros2
+  lifecycle_msgs
+  behaviortree_cpp_v3
+  tf2
 )
 
 foreach(Dependency IN LISTS THIS_PACKAGE_INCLUDE_DEPENDS)
@@ -26,30 +26,52 @@ endforeach()
 
 include_directories(include)
 
-add_executable(${PROJECT_NAME}
-  src/action_nodes/turn_inside.cpp
-  src/action_nodes/goal_pose.cpp
-  src/main.cpp
-)
+add_library(simple_commander SHARED
+  src/nav2_simple_commander/basic_nav.cpp)
 
-ament_target_dependencies(${PROJECT_NAME}
+target_include_directories(simple_commander PUBLIC include/eureka_bt)
+
+ament_target_dependencies(simple_commander
+  rclcpp
+  rcpputils
+  rclcpp_action
   sensor_msgs
   geometry_msgs
   nav_msgs
+  std_msgs
+  nav2_msgs
+  lifecycle_msgs
   behaviortree_cpp_v3
+  tf2
+)
+
+add_executable(${PROJECT_NAME}
+  src/turn_inside.cpp
+  src/goal_pose.cpp
+  src/main.cpp
+)
+
+target_link_libraries(${PROJECT_NAME} simple_commander)
+
+ament_target_dependencies(${PROJECT_NAME}
   rclcpp
   rcpputils
-  std_msgs
-  tf2
   rclcpp_action
+  sensor_msgs
+  geometry_msgs
+  nav_msgs
+  std_msgs
   nav2_msgs
-  # behaviortree_ros2
+  lifecycle_msgs
+  behaviortree_cpp_v3
+  tf2
 )
 
 # INSTALL
-install(TARGETS 
-  ${PROJECT_NAME}
-  DESTINATION lib/${PROJECT_NAME}
+install(TARGETS ${PROJECT_NAME} simple_commander
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
 install(

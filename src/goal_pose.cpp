@@ -47,7 +47,8 @@ Goalpose::Goalpose(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error = %f", lenght_error_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
-
+  
+  navigator_.waitUntilNav2Active();
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)

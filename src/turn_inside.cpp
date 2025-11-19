@@ -94,6 +94,13 @@ Turn_inside::Turn_inside(const std::string& name,
           velocities_.push_back(msg->velocity[max_idx]);
           efforts_.push_back(msg->effort[max_idx]);
         }
+        else
+        {
+          names_.push_back("none");
+          positions_.push_back(0.0);
+          velocities_.push_back(0.0);
+          efforts_.push_back(0.0);
+        }
       }
     }
   );
