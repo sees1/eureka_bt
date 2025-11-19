@@ -99,7 +99,7 @@ bool BasicNavigator::goToPose(const geometry_msgs::msg::PoseStamped & pose, cons
   }
 
   nav_to_pose_goal_handle_ = send_goal_future.get();
-  if (!nav_to_pose_goal_handle_ || 
+  if (!nav_to_pose_goal_handle_ ||
        nav_to_pose_goal_handle_->get_status() != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
     RCLCPP_ERROR(this->get_logger(), "Goal was rejected!");
     return false;
@@ -393,6 +393,75 @@ nav2_msgs::action::SmoothPath::Result BasicNavigator::smoothPath(const nav_msgs:
 
   auto result = result_future.get();
   return *result.result;
+}
+
+// ----------------------- Misc ------------------------------------------
+
+void BasicNavigator::cancelTask()
+{
+    RCLCPP_INFO(this->get_logger(), "Canceling current task.");
+
+    if (goal_handle_) {
+        auto cancel_future = goal_handle_->async_cancel_goal();
+
+        // Ждём завершения
+        if (rclcpp::spin_until_future_complete(
+                shared_from_this(), cancel_future) 
+            != rclcpp::FutureReturnCode::SUCCESS)
+        {
+            RCLCPP_WARN(this->get_logger(), "Failed to cancel goal");
+        }
+    }
+}
+
+bool BasicNavigator::isTaskComplete()
+{
+    if (!result_future_.valid()) {
+        return true;   // задача уже завершена или отменена
+    }
+
+    auto ret = rclcpp::spin_until_future_complete(
+        shared_from_this(), result_future_, std::chrono::milliseconds(100));
+
+    if (ret == rclcpp::FutureReturnCode::TIMEOUT) {
+        return false;  // всё ещё выполняется
+    }
+
+    if (ret == rclcpp::FutureReturnCode::SUCCESS) {
+        status_ = result_future_.get()->status;
+
+        if (status_ != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
+            RCLCPP_DEBUG(this->get_logger(), "Task failed with status: %d", status_);
+            return true;
+        }
+
+        RCLCPP_DEBUG(this->get_logger(), "Task succeeded!");
+        return true;
+    }
+
+    return true;  // в случае UNKNOWN считаем завершённым
+}
+
+TaskResult BasicNavigator::getResult()
+{
+    switch (status_) {
+        case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
+            return TaskResult::SUCCEEDED;
+
+        case action_msgs::msg::GoalStatus::STATUS_ABORTED:
+            return TaskResult::FAILED;
+
+        case action_msgs::msg::GoalStatus::STATUS_CANCELED:
+            return TaskResult::CANCELED;
+
+        default:
+            return TaskResult::UNKNOWN;
+    }
+}
+
+geometry_msgs::msg::PoseWithCovarianceStamped BasicNavigator::getFeedback()
+{
+    return feedback_;
 }
 
 // ----------------------- Costmap / map utilities -----------------------

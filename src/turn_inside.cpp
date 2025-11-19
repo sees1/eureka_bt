@@ -39,7 +39,13 @@ Turn_inside::Turn_inside(const std::string& name,
   else
     too_far_length_ = node_->declare_parameter("too_far_distance", 4.0);
 
+  if (node_->has_parameter("too_big_angle"))
+    too_big_angle_ = node_->get_parameter("too_big_angle").as_double();
+  else
+    too_big_angle_ = node_->declare_parameter("too_big_angle", 5.0);
+
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set dummy_rotate_duration = %f", dummy_rotation_dur_);
+  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_big_angle = %f", too_big_angle_);
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
@@ -115,8 +121,13 @@ BT::PortsList Turn_inside::providedPorts()
 
 BT::NodeStatus Turn_inside::onStart()
 {
-  turning_task_finished_ = false;
+  turn_narrow_ = "none";
   is_robot_stop_ = false;
+  is_robot_rotate_wheels_ = false;
+  turning_task_finished_ = false;
+  stop_fire_once_ = false;
+  rotate_wheels_fire_once_ = false;
+  rotate_fire_once_ = false;
 
   return BT::NodeStatus::RUNNING;
 } 
@@ -163,42 +174,58 @@ BT::NodeStatus Turn_inside::onRunning()
   }
   else
   {
-    if (!turning_task_finished_ && names_.size() == buffer_size_)
+    if (!turning_task_finished_)
     {
-      processValues();
-
-      if (!is_robot_stop_)
+      if (names_.size() == buffer_size_)
       {
-        is_robot_stop_ = stopRobot();
+        processValues();
 
-        turn_narrow_ = narrow_;
+        if (!is_robot_stop_)
+        {
+          is_robot_stop_ = stopRobot();
 
-        return BT::NodeStatus::RUNNING;
+          turn_narrow_ = narrow_;
+
+          return BT::NodeStatus::RUNNING;
+        }
+
+        if (!is_robot_rotate_wheels_)
+        {
+          is_robot_rotate_wheels_ = rotateWheels();
+
+          return BT::NodeStatus::RUNNING;
+        }
+
+        if (!rotate_fire_once_)
+        {
+          rotate_time_point_ = std::chrono::steady_clock::now();
+          rotate_fire_once_ = true;
+        }
+
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
+            narrow_ == "none" ||
+            length_ > too_far_length_ ||
+            std::abs(angle_) > too_big_angle_)
+          updateRotation(turn_narrow_);
+        else
+        {
+          RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
+          turn_narrow_ = "none";
+          is_robot_stop_ = false;
+          is_robot_rotate_wheels_ = false;
+          turning_task_finished_ = true;
+          stop_fire_once_ = false;
+          rotate_wheels_fire_once_ = false;
+          rotate_fire_once_ = false;
+        }
       }
-
-      if (!rotate_fire_once_)
-      {
-        rotate_time_point_ = std::chrono::steady_clock::now();
-        rotate_fire_once_ = true;
-      }
-
-      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
-          narrow_ == "none" ||
-          length_ > too_far_length_)
-        updateRotation(turn_narrow_);
       else
-      {
-        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
-        turn_narrow_ = "none";
-        is_robot_stop_ = false;
-        turning_task_finished_ = true;
-        stop_fire_once_ = false;
-        rotate_fire_once_ = false;
-      }
+        return BT::NodeStatus::RUNNING;
     }
     else
     {
       RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
+      RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
       return BT::NodeStatus::SUCCESS;
     }
   }
@@ -223,7 +250,20 @@ void Turn_inside::processValues()
   narrow_ = has_no_detection ? "none" : names_.back();
 
   length_ = calculateAverage(positions_);
-  angle_ = calculateAverage(velocities_);
+
+  double sum = 0.0;
+  auto beg = velocities_.rbegin();
+  auto end = velocities_.size() > 2 ? beg + 2
+                                    : velocities_.rend();
+  std::for_each(beg, end,
+    [this, &sum](auto& elem)
+    {
+      sum += elem;
+    }
+  );
+
+  angle_ = sum / std::distance(beg, end);
+
   coef_ = calculateAverage(efforts_);
 }
 
@@ -264,6 +304,34 @@ bool Turn_inside::stopRobot()
     return false;
 }
 
+bool Turn_inside::rotateWheels()
+{
+  if (!rotate_wheels_fire_once_)
+  {
+    rotate_wheel_time_point_ = std::chrono::steady_clock::now();
+    rotate_wheels_fire_once_ = true;
+  }
+
+  geometry_msgs::msg::Twist twist_msg;
+
+  twist_msg.linear.x = 0.0;
+  twist_msg.linear.y = 0.0;
+  twist_msg.linear.z = 0.0;
+  twist_msg.angular.x = 0.0;
+  twist_msg.angular.y = 0.0;
+  twist_msg.angular.z = 100.0;
+  turn_pub_->publish(twist_msg);
+
+  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot in rotate wheels process!");
+  double dt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_wheel_time_point_).count() / 1000.0;
+
+  if (dt > 3.0)
+    return true;
+  else
+    return false;
+}
+
+
 void Turn_inside::updateRotation(std::string& turn_arrow)
 {
   geometry_msgs::msg::Twist twist_msg;
@@ -275,15 +343,15 @@ void Turn_inside::updateRotation(std::string& turn_arrow)
 
   if (turn_arrow == "arrow:left")
   {
-    twist_msg.linear.x = 0.2;
+    twist_msg.linear.x = 0.1;
   }
   else if (turn_arrow == "arrow:right")
   {
-    twist_msg.linear.x = -0.2;
+    twist_msg.linear.x = -0.1;
   }
   else if (turn_arrow == "none")
   {
-    twist_msg.linear.x = -0.2;
+    twist_msg.linear.x = -0.1;
     RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction but turn right!");
   }
   else

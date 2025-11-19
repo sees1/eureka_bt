@@ -35,7 +35,7 @@ Goalpose::Goalpose(const std::string& name,
 
   if (node_->has_parameter("odometry_topic_name"))
     odometry_topic_name_ = node_->get_parameter("odometry_topic_name").as_string();
-  else  
+  else
     odometry_topic_name_ = node_->declare_parameter("odometry_topic_name", "/odometry");
 
   if (node_->has_parameter("too_far_distance"))
@@ -117,6 +117,7 @@ Goalpose::Goalpose(const std::string& name,
   );
 
   goal_pub_ = node_->create_publisher<geometry_msgs::msg::PoseStamped>("/goal_pose", 10);
+  turn_pub_ = node_->create_publisher<geometry_msgs::msg::Twist>("cmd_vel", 10);
 }
 
 BT::PortsList Goalpose::providedPorts() 
@@ -141,12 +142,25 @@ BT::NodeStatus Goalpose::onRunning()
 
       RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
 
+      if (!is_robot_stop_)
+      {
+        is_robot_stop_ = stopRobot();
+
+        return BT::NodeStatus::RUNNING;
+      }
+
       if (already_published_)
       {
         if (isRobotNearGoal())
         {
-          already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILURE
-          return BT::NodeStatus::SUCCESS;
+          if (waitNav())
+          {
+            wait_nav_fire_once_ = false;
+            is_robot_stop_ = false;
+            stop_fire_once_ = false;
+            already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
+            return BT::NodeStatus::SUCCESS;
+          }
         }
       }
       
@@ -237,21 +251,68 @@ void Goalpose::publishGoalPose(double length, double angle)
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, path_yaw = %f)!", current_goal_x_, current_goal_y_, yaw);
 
-  goal_pub_->publish(goal);
+  navigator_.goToPose(goal);
 }
 
 bool Goalpose::isRobotNearGoal()
 {
-  bool fl = (std::hypot(std::abs(pose_x_ - current_goal_x_), std::abs(pose_y_ - current_goal_y_)) < 0.5);
+  // bool fl = (std::hypot(std::abs(pose_x_ - current_goal_x_), std::abs(pose_y_ - current_goal_y_)) < 0.5);
 
-  if (fl)
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
+  // if (fl)
+  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
 
-  if (!fl && full_info_)
-  {
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
-  }
+  // if (!fl && full_info_)
+  // {
+  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
+  //   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
+  // }
+
+  
 
   return fl;
+}
+
+bool Goalpose::waitNav()
+{
+  if (!wait_nav_fire_once_)
+  {
+    wait_nav_point_ = std::chrono::steady_clock::now();
+    wait_nav_fire_once_ = true;
+  }
+
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) wait until nav2 finish path");
+
+  double dt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - wait_nav_point_).count() / 1000.0;
+
+  if (dt > 3.0)
+    return true;
+  else
+    return false;
+}
+
+bool Goalpose::stopRobot()
+{
+  if (!stop_fire_once_)
+  {
+    stop_time_point_ = std::chrono::steady_clock::now();
+    stop_fire_once_ = true;
+  }
+
+  geometry_msgs::msg::Twist twist_msg;
+
+  twist_msg.linear.x = 0.0;
+  twist_msg.linear.y = 0.0;
+  twist_msg.linear.z = 0.0;
+  twist_msg.angular.x = 0.0;
+  twist_msg.angular.y = 0.0;
+  twist_msg.angular.z = 0.0;
+  turn_pub_->publish(twist_msg);
+
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot in stop process!");
+  double dt = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - stop_time_point_).count() / 1000.0;
+
+  if (dt > 4.0)
+    return true;
+  else
+    return false;
 }
