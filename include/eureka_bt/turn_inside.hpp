@@ -68,8 +68,8 @@ private:
   
   // arrow logic substracted from cv node
   std::deque<std::string> names_;
-  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> length_acc_;
-  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> angle_acc_;
+  std::deque<double> length_acc_;
+  std::deque<double> angle_acc_;
 
   std::string turn_narrow_;
 

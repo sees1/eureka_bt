@@ -38,6 +38,7 @@ public:
   virtual void onHalted() override;
   
 private:
+  double computeRobotYaw();
   void publishGoalPose(double length, double angle);
 
 private:
@@ -70,6 +71,8 @@ private:
   bool already_published_;
   double current_goal_x_;
   double current_goal_y_;
+
+  bool republish_once_ = false;
 
   std::string narrow_ = "none";
   double length_ = 0.0;

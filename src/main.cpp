@@ -38,7 +38,7 @@ int main(int argc, char **argv) {
 
   auto tree = factory.createTreeFromFile("./src/eureka_bt/xml_tree/tree.xml");
 
-  auto timer = nh->create_wall_timer(std::chrono::milliseconds(250), 
+  auto timer = nh->create_wall_timer(std::chrono::milliseconds(100), 
     [&tree]()
     {
       tree.tickRoot();

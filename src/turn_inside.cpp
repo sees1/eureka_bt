@@ -41,9 +41,6 @@ Turn_inside::Turn_inside(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_big_angle = %f", too_big_angle_);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_far_distance = %f", too_far_length_);
 
-  length_acc_ = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
-  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(2);
-
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
     {
@@ -79,21 +76,25 @@ Turn_inside::Turn_inside(const std::string& name,
       }
 
       if (names_.size() == buffer_size_)
+      {  
         names_.pop_front();
+        length_acc_.pop_front();
+        angle_acc_.pop_front();
+      }
 
       // if v_idx.size == 0 than we can't find any none or arrow detection, 
       // only cone so don't add it
       if (v_idx.size())
       {
         names_.push_back(msg->name[max_idx]);
-        length_acc_->accumulate(msg->position[max_idx]);
-        angle_acc_->accumulate(msg->velocity[max_idx]);
+        length_acc_.push_back(msg->position[max_idx]);
+        angle_acc_.push_back(msg->velocity[max_idx]);
       }
       else
       {
         names_.push_back("none");
-        length_acc_->accumulate(0.0);
-        angle_acc_->accumulate(0.0);
+        length_acc_.push_back(msg->position[0]);
+        angle_acc_.push_back(msg->velocity[0]);
       }
     }
   );
@@ -134,10 +135,13 @@ BT::NodeStatus Turn_inside::onRunning()
           narrow_ == "none" ||
           length_ > too_far_length_ ||
           std::abs(angle_) > too_big_angle_)
+      {
         updateRotation(turn_narrow_);
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside) while rotate narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
+      }
       else
       {
-        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
         turning_task_finished_ = true;
       }
     }
@@ -161,19 +165,54 @@ void Turn_inside::onHalted()
 
 bool Turn_inside::processValues()
 {
-  if (names_.size() != buffer_size_)
-    return false;
-  
-  bool has_no_detection = std::any_of(names_.begin(), names_.end(),
-    [](const std::string& name)
-    {
-      return name == "none";
-    }
-  );
+  size_t names_s = names_.size();
 
-  narrow_ = has_no_detection ? "none" : names_.back();
-  length_ = length_acc_->getRollingMean();
-  angle_ = angle_acc_->getRollingMean();
+  if (names_s != buffer_size_)
+    return false;
+
+  size_t false_positive_counter = 0;
+
+  size_t left = 0;
+  size_t right = 1;
+
+  while(right < names_s)
+  {
+    if (names_[right] == "none")
+    {  
+      right++;
+      false_positive_counter++;
+      continue;
+    }
+    if (std::abs(length_acc_[left] - length_acc_[right]) > 2.0)
+      false_positive_counter++;
+    if (std::abs(angle_acc_[left] - angle_acc_[right]) > 3.0)
+      false_positive_counter++;
+
+    left = right;
+    right++;
+
+    if (static_cast<float>(false_positive_counter) / static_cast<float>(names_s) > 0.4)
+    {
+      narrow_ = "none";
+      length_ = 0.0;
+      angle_ = 0.0;
+      return false;
+    }
+  }
+
+  right--;
+
+  while(right != 0)
+  {
+    if (names_[right] == "none")
+      right--;
+    else
+      break;
+  }
+  
+  narrow_ = names_[right];
+  length_ = length_acc_[right];
+  angle_ = angle_acc_[right];
 
   return true;
 }
@@ -199,16 +238,11 @@ void Turn_inside::updateRotation(std::string& turn_arrow)
 
   if (turn_arrow == "arrow:left")
   {
-    twist_msg.linear.x = 0.1;
+    twist_msg.linear.x = 0.15;
   }
   else if (turn_arrow == "arrow:right")
   {
-    twist_msg.linear.x = -0.1;
-  }
-  else if (turn_arrow == "none")
-  {
-    twist_msg.linear.x = -0.1;
-    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) unknow direction but turn right!");
+    twist_msg.linear.x = -0.15;
   }
   else
   {
