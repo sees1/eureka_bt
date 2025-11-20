@@ -42,7 +42,7 @@ Turn_inside::Turn_inside(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_far_distance = %f", too_far_length_);
 
   length_acc_ = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
-  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
+  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(2);
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
