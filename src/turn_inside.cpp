@@ -12,11 +12,6 @@ Turn_inside::Turn_inside(const std::string& name,
   turning_task_finished_(true),
   rotate_fire_once_(false)
 {
-  if (node_->has_parameter("dry_run"))
-    dry_run_ = node_->get_parameter("dry_run").as_bool();
-  else
-    dry_run_ = node_->declare_parameter("dry_run", false);
-
   if (node_->has_parameter("odometry_topic_name"))
     odometry_topic_name_ = node_->get_parameter("odometry_topic_name").as_string();
   else  
@@ -44,6 +39,10 @@ Turn_inside::Turn_inside(const std::string& name,
 
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set dummy_rotate_duration = %f", dummy_rotation_dur_);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_big_angle = %f", too_big_angle_);
+  RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_far_distance = %f", too_far_length_);
+
+  length_acc_ = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
+  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
 
   pose_sub_ = node_->create_subscription<nav_msgs::msg::Odometry>(odometry_topic_name_, 10,
     [this](nav_msgs::msg::Odometry::SharedPtr msg)
@@ -61,50 +60,40 @@ Turn_inside::Turn_inside(const std::string& name,
       std::lock_guard<std::mutex> lc(mut_);
 
       // collect only none and arrow:left/arrow:right
-      if (!dry_run_)
+      std::vector<int> v_idx;
+      for(size_t idx = 0; idx < msg->name.size(); ++idx)
       {
-        std::vector<int> v_idx;
-        for(size_t idx = 0; idx < msg->name.size(); ++idx)
-        {
-          if (msg->name[idx] != "cone:none")
-            v_idx.push_back(idx);
-        }
+        if (msg->name[idx] != "cone:none")
+          v_idx.push_back(idx);
+      }
 
-        double max = 0;
-        size_t max_idx = 0;
-        for(auto idx : v_idx)
+      double max = 0;
+      size_t max_idx = 0;
+      for(auto idx : v_idx)
+      {
+        if (msg->effort[idx] > max)
         {
-          if (msg->effort[idx] > max)
-          {
-            max = msg->effort[idx];
-            max_idx = idx;
-          }
+          max = msg->effort[idx];
+          max_idx = idx;
         }
+      }
 
-        if (names_.size() == buffer_size_)
-        {
-          names_.pop_front();
-          positions_.pop_front();
-          velocities_.pop_front();
-          efforts_.pop_front();
-        }
+      if (names_.size() == buffer_size_)
+        names_.pop_front();
 
-        // if v_idx.size == 0 than we can't find any none or arrow detection, 
-        // only cone so don't add it
-        if (v_idx.size())
-        {
-          names_.push_back(msg->name[max_idx]);
-          positions_.push_back(msg->position[max_idx]);
-          velocities_.push_back(msg->velocity[max_idx]);
-          efforts_.push_back(msg->effort[max_idx]);
-        }
-        else
-        {
-          names_.push_back("none");
-          positions_.push_back(0.0);
-          velocities_.push_back(0.0);
-          efforts_.push_back(0.0);
-        }
+      // if v_idx.size == 0 than we can't find any none or arrow detection, 
+      // only cone so don't add it
+      if (v_idx.size())
+      {
+        names_.push_back(msg->name[max_idx]);
+        length_acc_->accumulate(msg->position[max_idx]);
+        angle_acc_->accumulate(msg->velocity[max_idx]);
+      }
+      else
+      {
+        names_.push_back("none");
+        length_acc_->accumulate(0.0);
+        angle_acc_->accumulate(0.0);
       }
     }
   );
@@ -130,68 +119,36 @@ BT::NodeStatus Turn_inside::onRunning()
 {
   std::lock_guard<std::mutex> lc(mut_);
 
-  if (dry_run_)
+  if (!turning_task_finished_)
   {
-    if (!turning_task_finished_)
+    if (processValues())
     {
       if (!rotate_fire_once_)
       {
+        turn_narrow_ = narrow_;
         rotate_time_point_ = std::chrono::steady_clock::now();
         rotate_fire_once_ = true;
       }
 
-      // dummy rotate 4 seconds -_-
-      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_)
+      if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
+          narrow_ == "none" ||
+          length_ > too_far_length_ ||
+          std::abs(angle_) > too_big_angle_)
         updateRotation(turn_narrow_);
       else
       {
-        turn_narrow_ = "none";
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
         turning_task_finished_ = true;
-        rotate_fire_once_ = false;
       }
     }
     else
-    {
-      RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
-      return BT::NodeStatus::SUCCESS;
-    }
+      return BT::NodeStatus::RUNNING;
   }
   else
   {
-    if (!turning_task_finished_)
-    {
-      if (names_.size() == buffer_size_)
-      {
-        processValues();
-
-        if (!rotate_fire_once_)
-        {
-          rotate_time_point_ = std::chrono::steady_clock::now();
-          rotate_fire_once_ = true;
-        }
-
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
-            narrow_ == "none" ||
-            length_ > too_far_length_ ||
-            std::abs(angle_) > too_big_angle_)
-          updateRotation(turn_narrow_);
-        else
-        {
-          RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
-          turn_narrow_ = "none";
-          turning_task_finished_ = true;
-          rotate_fire_once_ = false;
-        }
-      }
-      else
-        return BT::NodeStatus::RUNNING;
-    }
-    else
-    {
-      RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
-      RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
-      return BT::NodeStatus::SUCCESS;
-    }
+    RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
+    RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
+    return BT::NodeStatus::SUCCESS;
   }
     
   return BT::NodeStatus::RUNNING;
@@ -202,8 +159,11 @@ void Turn_inside::onHalted()
   RCLCPP_ERROR(node_->get_logger(), "(Turn_inside) Current node is halted!");
 }
 
-void Turn_inside::processValues()
+bool Turn_inside::processValues()
 {
+  if (names_.size() != buffer_size_)
+    return false;
+  
   bool has_no_detection = std::any_of(names_.begin(), names_.end(),
     [](const std::string& name)
     {
@@ -212,23 +172,10 @@ void Turn_inside::processValues()
   );
 
   narrow_ = has_no_detection ? "none" : names_.back();
+  length_ = length_acc_->getRollingMean();
+  angle_ = angle_acc_->getRollingMean();
 
-  length_ = calculateAverage(positions_);
-
-  double sum = 0.0;
-  auto beg = velocities_.rbegin();
-  auto end = velocities_.size() > 2 ? beg + 2
-                                    : velocities_.rend();
-  std::for_each(beg, end,
-    [this, &sum](auto& elem)
-    {
-      sum += elem;
-    }
-  );
-
-  angle_ = sum / std::distance(beg, end);
-
-  coef_ = calculateAverage(efforts_);
+  return true;
 }
 
 double Turn_inside::calculateAverage(const std::deque<double>& values)

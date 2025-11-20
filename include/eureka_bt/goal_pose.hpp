@@ -6,6 +6,8 @@
 #include <mutex>
 
 #include <rclcpp/rclcpp.hpp>
+#include "rcppmath/rolling_mean_accumulator.hpp"
+#include <rclcpp_action/rclcpp_action.hpp>
 #include <behaviortree_cpp_v3/action_node.h>
 
 #include <geometry_msgs/msg/pose.hpp>
@@ -22,6 +24,9 @@
 
 class Goalpose : public BT::StatefulActionNode {
 public:
+  using ResultCode = rclcpp_action::ResultCode;
+  using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
+public:
   Goalpose(const std::string& name,
            const BT::NodeConfiguration& config,
            rclcpp::Node::SharedPtr node);
@@ -33,19 +38,17 @@ public:
   virtual void onHalted() override;
   
 private:
-  bool isRobotNearGoal();
   void publishGoalPose(double length, double angle);
 
 private:
   // before been in cv node
-  void processValues();
-  double calculateAverage(const std::deque<double>& values);
+  bool processValues();
 
 private:
   // ros parameters
   bool full_info_;
-  bool dry_run_;
   double length_error_delta_;
+  double navigation_time_limit_;
   size_t buffer_size_;
   double too_far_length_;
   std::string odometry_topic_name_;
@@ -59,6 +62,7 @@ private:
 
   std::shared_ptr<eureka_bt::BasicNavigator> navigator_;
   std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> go_to_pose_res_;
+  TimePoint start_navigation_time_;
 
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
@@ -73,9 +77,9 @@ private:
   double coef_ = 0.0;
 
   std::deque<std::string> names_;
-  std::deque<double>      positions_;
-  std::deque<double>      velocities_;
-  std::deque<double>      efforts_;
+  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> length_acc_;
+  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> angle_acc_;
+  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> coef_acc_;
   
   geometry_msgs::msg::PoseStamped current_robot_pose_;
   geometry_msgs::msg::PoseStamped current_goal_;

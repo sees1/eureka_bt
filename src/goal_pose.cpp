@@ -22,11 +22,11 @@ Goalpose::Goalpose(const std::string& name,
     buffer_size_ = static_cast<size_t>(node_->get_parameter("buffer_size").as_int());
   else
     buffer_size_ = static_cast<size_t>(node_->declare_parameter("buffer_size", 10));
-  
-  if (node_->has_parameter("dry_run"))
-    dry_run_ = node_->get_parameter("dry_run").as_bool();
+
+  if (node_->has_parameter("navigation_time_limit"))
+    navigation_time_limit_ = node_->get_parameter("navigation_time_limit").as_double();
   else
-    dry_run_ = node_->declare_parameter("dry_run", false);
+    navigation_time_limit_ = node_->declare_parameter("navigation_time_limit", 60.0);
 
   if (node_->has_parameter("odometry_topic_name"))
     odometry_topic_name_ = node_->get_parameter("odometry_topic_name").as_string();
@@ -42,6 +42,10 @@ Goalpose::Goalpose(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error_delta = %f", length_error_delta_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
+
+  length_acc_ = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
+  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
+  coef_acc_   = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
   
   navigator_->waitUntilNav2Active();
 
@@ -64,50 +68,42 @@ Goalpose::Goalpose(const std::string& name,
       std::lock_guard<std::mutex> lc(mut_);
 
       // collect only none and arrow:left/arrow:right
-      if (!dry_run_)
+      std::vector<int> v_idx;
+      for(size_t idx = 0; idx < msg->name.size(); ++idx)
       {
-        std::vector<int> v_idx;
-        for(size_t idx = 0; idx < msg->name.size(); ++idx)
-        {
-          if (msg->name[idx] != "cone:none")
-            v_idx.push_back(idx);
-        }
+        if (msg->name[idx] != "cone:none")
+          v_idx.push_back(idx);
+      }
 
-        double max = 0;
-        size_t max_idx = 0;
-        for(auto idx : v_idx)
+      double max = 0;
+      size_t max_idx = 0;
+      for(auto idx : v_idx)
+      {
+        if (msg->effort[idx] > max)
         {
-          if (msg->effort[idx] > max)
-          {
-            max = msg->effort[idx];
-            max_idx = idx;
-          }
+          max = msg->effort[idx];
+          max_idx = idx;
         }
+      }
 
-        if (names_.size() == buffer_size_)
-        {
-          names_.pop_front();
-          positions_.pop_front();
-          velocities_.pop_front();
-          efforts_.pop_front();
-        }
+      if (names_.size() == buffer_size_)
+        names_.pop_front();
 
-        // if v_idx.size == 0 than we can't find any none or arrow detection, 
-        // only cone so add none
-        if (v_idx.size())
-        {
-          names_.push_back(msg->name[max_idx]);
-          positions_.push_back(msg->position[max_idx]);
-          velocities_.push_back(msg->velocity[max_idx]);
-          efforts_.push_back(msg->effort[max_idx]);
-        }
-        else
-        {
-          names_.push_back("none");
-          positions_.push_back(0.0);
-          velocities_.push_back(0.0);
-          efforts_.push_back(0.0);
-        }
+      // if v_idx.size == 0 than we can't find any none or arrow detection, 
+      // only cone so add none
+      if (v_idx.size())
+      {
+        names_.push_back(msg->name[max_idx]);
+        length_acc_->accumulate(msg->position[max_idx]);
+        angle_acc_->accumulate(msg->velocity[max_idx]);
+        coef_acc_->accumulate(msg->effort[max_idx]);
+      }
+      else
+      {
+        names_.push_back("none");
+        length_acc_->accumulate(0.0);
+        angle_acc_->accumulate(0.0);
+        coef_acc_->accumulate(0.0);
       }
     }
   );
@@ -120,6 +116,7 @@ BT::PortsList Goalpose::providedPorts()
 
 BT::NodeStatus Goalpose::onStart()
 {
+  already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
   return BT::NodeStatus::RUNNING;
 }
 
@@ -127,48 +124,60 @@ BT::NodeStatus Goalpose::onRunning()
 {
   std::lock_guard<std::mutex> lc(mut_);
 
-  if (!dry_run_)
+  if (processValues())
   {
-    if (names_.size() == buffer_size_)
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
+
+    if (already_published_)
     {
-      processValues();
+      rclcpp_action::ResultCode fl = navigator_->isTaskComplete<typename nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
 
-      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
-
-      if (already_published_)
+      switch (fl)
       {
-        if (isRobotNearGoal())
+        case ResultCode::UNKNOWN:
         {
-          already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
+          float navigation_elapsed = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_navigation_time_).count();
+
+          if (navigation_elapsed > navigation_time_limit_)
+          {
+            RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Navigation mission duration is long than required! Quit");
+            return BT::NodeStatus::FAILURE;
+          }
+          else
+          {
+            RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
+            return BT::NodeStatus::RUNNING;
+          }
+        }
+        case ResultCode::ABORTED:
+        {
+          RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Navigation failed while running! Try to create new goal!");
+          already_published_ = false;
+          break;
+        }
+        case ResultCode::SUCCEEDED:
+        {
+          RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
           return BT::NodeStatus::SUCCESS;
         }
-      }
-      
-      if (length_ < too_far_length_ && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
-      {
-        publishGoalPose(length_, angle_);
-        already_published_ = true;
+        case ResultCode::CANCELED:
+        {
+          RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Navigation is broken! FAILURE will return!");
+          return BT::NodeStatus::FAILURE;
+        }
       }
     }
-    else
+    
+    if (length_ < too_far_length_ && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
     {
-      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Can't collect enough data to start. Current candidate set size = %d", (int)names_.size());
-      return BT::NodeStatus::RUNNING;
+      publishGoalPose(length_, angle_);
+      already_published_ = true;
     }
   }
   else
   {
-    if (already_published_)
-    {
-      if (isRobotNearGoal())
-        return BT::NodeStatus::SUCCESS;
-    }
-
-    if (already_published_ == false)
-    {
-      publishGoalPose(2.0, 0.4);
-      already_published_ = true;
-    }
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Can't collect enough data to start. Current candidate set size = %d", (int)names_.size());
+    return BT::NodeStatus::RUNNING;
   }
 
   return BT::NodeStatus::RUNNING;
@@ -176,11 +185,42 @@ BT::NodeStatus Goalpose::onRunning()
 
 void Goalpose::onHalted()
 {
-  RCLCPP_ERROR(node_->get_logger(), "(Goalpose) current node is halted!");
+  RCLCPP_ERROR(node_->get_logger(), "(Goalpose) current node is halted! Stop nav stack!");
+
+  rclcpp_action::ResultCode fl = navigator_->isTaskComplete<typename nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
+
+  switch (fl)
+  {
+    case ResultCode::UNKNOWN:
+    {
+      navigator_->cancelTask<typename nav2_msgs::action::NavigateToPose>();
+      break;
+    }
+    case ResultCode::ABORTED:
+    {
+      RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Navigation failed while node is halted! Doesn't matter");
+      break;
+    }
+    case ResultCode::SUCCEEDED:
+    {
+      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal while node is halted! Happy");
+      break;
+    }
+    case ResultCode::CANCELED:
+    {
+      RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Navigation is broken while node is halted! Doesn't matter");
+      break;
+    }
+  }
+
+  RCLCPP_ERROR(node_->get_logger(), "(Goalpose) Quit!");
 }
 
-void Goalpose::processValues()
+bool Goalpose::processValues()
 {
+  if (names_.size() != buffer_size_)
+    return false;
+
   bool has_no_detection = std::any_of(names_.begin(), names_.end(),
     [](const std::string& name)
     {
@@ -190,19 +230,11 @@ void Goalpose::processValues()
 
   narrow_ = has_no_detection ? "none" : names_.back();
 
-  length_ = calculateAverage(positions_);
-  angle_ = calculateAverage(velocities_);
-  coef_ = calculateAverage(efforts_);
-}
+  length_ = length_acc_->getRollingMean();
+  angle_ = angle_acc_->getRollingMean();
+  coef_ = coef_acc_->getRollingMean();
 
-double Goalpose::calculateAverage(const std::deque<double>& values)
-{
-  double sum = 0.0;
-
-  for (const auto& value : values)
-    sum += value;
-  
-  return sum / values.size();  
+  return true;
 }
 
 void Goalpose::publishGoalPose(double length, double angle) 
@@ -256,20 +288,5 @@ void Goalpose::publishGoalPose(double length, double angle)
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Length of path cropped from %f to %f!", before_length, length);
 
   go_to_pose_res_ = navigator_->goToPose(current_goal_);
-}
-
-bool Goalpose::isRobotNearGoal()
-{
-  bool fl = navigator_->isTaskComplete<typename nav2_msgs::action::NavigateToPose>(go_to_pose_res_);
-
-  if (fl)
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
-
-  if (!fl && full_info_)
-  {
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
-    // RCLCPP_INFO(node_->get_logger(), "(Goalpose) Current robot pose (x = %f, y = %f)", pose_x_, pose_y_);
-  }
-
-  return fl;
+  start_navigation_time_ = std::chrono::steady_clock::now();
 }

@@ -87,10 +87,29 @@ public:
       return spin_goal_handle_;
     else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::BackUp>) 
       return backup_goal_handle_;
-    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::BackUp>) 
-      return backup_goal_handle_;
     else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::AssistedTeleop>) 
       return assisted_teleop_goal_handle_;
+    else
+      static_assert(!sizeof(ActionT), "Unsupported type");
+  }
+
+  template<typename ActionT>
+  typename rclcpp_action::Client<ActionT>::SharedPtr getClientByType()
+  {
+    if constexpr (std::is_same_v<ActionT, nav2_msgs::action::NavigateToPose>)
+      return nav_to_pose_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::NavigateThroughPoses>)
+      return nav_through_poses_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::FollowWaypoints>)
+      return follow_waypoints_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::FollowPath>)
+      return follow_path_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::Spin>) 
+      return spin_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::BackUp>) 
+      return backup_client_;
+    else if constexpr (std::is_same_v<ActionT, nav2_msgs::action::AssistedTeleop>) 
+      return assisted_teleop_client_;
     else
       static_assert(!sizeof(ActionT), "Unsupported type");
   }
@@ -100,11 +119,14 @@ public:
   {
     RCLCPP_INFO(this->get_logger(), "Canceling current task.");
 
-    typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr goal_handle_ = 
+    typename rclcpp_action::ClientGoalHandle<ActionT>::SharedPtr goal_handle = 
       getGoalByType<ActionT>();
 
-    if (goal_handle_) {
-        auto cancel_future = goal_handle_->async_cancel_goal();
+    typename rclcpp_action::Client<ActionT>::SharedPtr client = 
+      getClientByType<ActionT>();
+
+    if (goal_handle && client) {
+        auto cancel_future = client->async_cancel_goal(goal_handle);
 
         // Ждём завершения
         if (rclcpp::spin_until_future_complete(shared_from_this(), cancel_future) != rclcpp::FutureReturnCode::SUCCESS)
@@ -115,17 +137,19 @@ public:
   }
 
   template<class ActionT>
-  bool isTaskComplete(std::shared_future<typename rclcpp_action::Client<ActionT>::WrappedResult> result_future)
+  rclcpp_action::ResultCode isTaskComplete(std::shared_future<typename rclcpp_action::Client<ActionT>::WrappedResult> result_future)
   {
+    using ResultCode = rclcpp_action::ResultCode;
+
     if (!result_future.valid()) {
-      return true;   // задача уже завершена или отменена
+      return ResultCode::SUCCEEDED;   // задача уже завершена или отменена
     }
 
     auto ret = rclcpp::spin_until_future_complete(
       shared_from_this(), result_future, std::chrono::milliseconds(100));
 
     if (ret == rclcpp::FutureReturnCode::TIMEOUT) {
-      return false;  // всё ещё выполняется
+      return ResultCode::UNKNOWN;  // всё ещё выполняется
     }
 
     if (ret == rclcpp::FutureReturnCode::SUCCESS) {
@@ -133,14 +157,14 @@ public:
 
       if ((int8_t)status_ != action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
         RCLCPP_DEBUG(this->get_logger(), "Task failed!");
-        return true;
+        return ResultCode::ABORTED;
       }
 
       RCLCPP_DEBUG(this->get_logger(), "Task succeeded!");
-      return true;
+      return ResultCode::SUCCEEDED;
     }
 
-    return true;  // в случае UNKNOWN считаем завершённым
+    return ResultCode::SUCCEEDED;  // в случае UNKNOWN считаем завершённым
   }
   // TaskResult getResult();
   // geometry_msgs::msg::PoseWithCovarianceStamped getFeedback();

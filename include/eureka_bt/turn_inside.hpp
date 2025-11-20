@@ -5,6 +5,7 @@
 #include <deque>
 
 #include <rclcpp/rclcpp.hpp>
+#include "rcppmath/rolling_mean_accumulator.hpp"
 #include <behaviortree_cpp_v3/action_node.h>
 
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -31,7 +32,7 @@ public:
 
 private:
   // before been in cv node
-  void processValues();
+  bool processValues();
   double calculateAverage(const std::deque<double>& values);
 
 private:
@@ -44,7 +45,6 @@ private:
 
 private:
   // ros parameter's
-  bool dry_run_;
   size_t buffer_size_;
   double dummy_rotation_dur_;
   double too_far_length_;
@@ -68,15 +68,14 @@ private:
   
   // arrow logic substracted from cv node
   std::deque<std::string> names_;
-  std::deque<double>      positions_;
-  std::deque<double>      velocities_;
-  std::deque<double>      efforts_;
+  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> length_acc_;
+  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> angle_acc_;
+
+  std::string turn_narrow_;
 
   std::string narrow_ = "none";
-  std::string turn_narrow_;
   double length_ = 0.0;
   double angle_ = 0.0;
-  double coef_ = 0.0;
 
   tf2::Quaternion pose_quat_;
 

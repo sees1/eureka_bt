@@ -2,7 +2,7 @@
     <BehaviorTree ID="MainTree">
         <Sequence name="movements">
             <Goal_pose     name = "Goal_pose"/>
-            <Goal_pose     name = "Goal_pose_second"/> 
+            <!-- <Goal_pose     name = "Goal_pose_second"/>  -->
             <Stop_robot    name = "Stop_robot_first_blood"/>
             <Rotate_wheels name = "Rotate_wheels_first_blood"/>
             <Turn_inside   name = "Turn_inside"/>
