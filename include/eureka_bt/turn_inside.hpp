@@ -46,7 +46,7 @@ private:
 private:
   // ros parameter's
   size_t buffer_size_;
-  double dummy_rotation_dur_;
+  double dummy_rotate_duration_temp_;
   double too_far_length_;
   double too_big_angle_;
   std::string odometry_topic_name_;
@@ -54,9 +54,7 @@ private:
 private:
   rclcpp::Node::SharedPtr node_;
   
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
-  
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr turn_pub_;
   
   // processing flag's
@@ -67,11 +65,12 @@ private:
   std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
   
   // arrow logic substracted from cv node
-  std::shared_ptr<ArrowFilter> arrow_acc_;
+  std::shared_ptr<FalsePositiveFilter<Arrow>> arrow_acc_;
+  std::shared_ptr<FalsePositiveFilter<Cone>> cone_acc_;
   Arrow current_arrow_;
+  Cone current_cone_;
   std::string turn_direction_;
-
-  tf2::Quaternion pose_quat_;
+  double dummy_rotation_dur_;
 
   // controll take data from topic and publish goal process
   std::mutex mut_;

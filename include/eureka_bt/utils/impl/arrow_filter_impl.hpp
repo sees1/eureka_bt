@@ -1,6 +1,5 @@
-#include "utils/arrow_filter.hpp"
-
-ArrowFilter::ArrowFilter(size_t window,
+template <typename Object>
+FalsePositiveFilter<Object>::FalsePositiveFilter(size_t window,
                          double allow_length_error,
                          double allow_angle_error)
 : window_size_(window),
@@ -8,18 +7,20 @@ ArrowFilter::ArrowFilter(size_t window,
   allow_angle_error_(allow_angle_error)
 { }
 
-void ArrowFilter::addArrow(Arrow&& arrow)
+template <typename Object>
+void FalsePositiveFilter<Object>::addObject(Object&& arrow)
 {
   if (isBufferFull())
-    arrows_.pop_front();
+    objects_.pop_front();
 
-  arrows_.push_back(arrow);
+  objects_.push_back(std::move(arrow));
 }
 
-Arrow ArrowFilter::getActualArrow()
+template <typename Object>
+Object FalsePositiveFilter<Object>::getActualObject()
 {
   if (!isBufferFull())
-    return Arrow();
+    return Object{"none", 0.0, 0.0};
 
   size_t false_positive_counter = 0;
 
@@ -28,20 +29,20 @@ Arrow ArrowFilter::getActualArrow()
 
   while(right_idx < window_size_)
   {
-    if (arrows_[right_idx].direction == "none")
+    if (objects_[right_idx].direction == "none")
     {  
       right_idx++;
       false_positive_counter++;
       continue;
     }
-    if (arrows_[left_idx].direction == "none")
+    if (objects_[left_idx].direction == "none")
     {
       left_idx = right_idx;
       continue;
     }
 
-    if (std::fabs(arrows_[left_idx].distance - arrows_[right_idx].distance) > allow_length_error_ ||
-        std::fabs(arrows_[left_idx].angle - arrows_[right_idx].angle) > allow_angle_error_)
+    if (std::fabs(objects_[left_idx].distance - objects_[right_idx].distance) > allow_length_error_ ||
+        std::fabs(objects_[left_idx].angle - objects_[right_idx].angle) > allow_angle_error_)
       false_positive_counter++;
 
     left_idx = right_idx;
@@ -49,7 +50,7 @@ Arrow ArrowFilter::getActualArrow()
 
     // too much false positive arrows in buffer
     if (static_cast<float>(false_positive_counter) / static_cast<float>(window_size_ - 1) > 0.4)
-      return Arrow{"none", 0.0, 0.0};
+      return Object{"none", 0.0, 0.0};
   }
 
   // if buffer doesn't corrupted by false positive arrows
@@ -58,11 +59,11 @@ Arrow ArrowFilter::getActualArrow()
 
   while(right_idx != 0)
   {
-    if (arrows_[right_idx].direction == "none")
+    if (objects_[right_idx].direction == "none")
       right_idx--;
     else
       break;
   }
   
-  return arrows_[right_idx];
+  return objects_[right_idx];
 }

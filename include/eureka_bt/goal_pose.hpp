@@ -4,6 +4,7 @@
 #include <chrono>
 #include <thread>
 #include <mutex>
+#include <tuple>
 
 #include "utils/arrow_filter.hpp"
 
@@ -11,6 +12,11 @@
 #include "rcppmath/rolling_mean_accumulator.hpp"
 #include <rclcpp_action/rclcpp_action.hpp>
 #include <behaviortree_cpp_v3/action_node.h>
+
+#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
+#include "tf2_ros/transform_broadcaster.h"
 
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -40,7 +46,8 @@ public:
   virtual void onHalted() override;
   
 private:
-  double computeRobotYaw();
+  std::tuple<double, double, double> computeRobotAngles();
+  double normalizeAngle(double angle);
   void publishGoalPose(double length, double angle);
 
 private:
@@ -68,19 +75,25 @@ private:
   std::shared_future<rclcpp_action::Client<nav2_msgs::action::NavigateToPose>::WrappedResult> go_to_pose_res_;
   TimePoint start_navigation_time_;
 
-  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr pose_sub_;
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
+  rclcpp::TimerBase::SharedPtr pose_timer_;
+
 
   bool already_published_;
   double current_goal_x_;
   double current_goal_y_;
+  double transform_tolerance_;
 
   bool republish_once_ = false;
 
   Arrow current_arrow_;
-  std::shared_ptr<ArrowFilter> arrow_acc_;
+  Cone current_cone_;
+  std::shared_ptr<FalsePositiveFilter<Arrow>> arrow_acc_;
+  std::shared_ptr<FalsePositiveFilter<Cone>> cone_acc_;
   
-  geometry_msgs::msg::PoseStamped current_robot_pose_;
+  geometry_msgs::msg::TransformStamped current_robot_transform_;
   geometry_msgs::msg::PoseStamped current_goal_;
 
   std::mutex mut_;

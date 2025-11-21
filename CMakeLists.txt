@@ -18,6 +18,8 @@ set(THIS_PACKAGE_INCLUDE_DEPENDS
   lifecycle_msgs
   behaviortree_cpp_v3
   tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 foreach(Dependency IN LISTS THIS_PACKAGE_INCLUDE_DEPENDS)
@@ -43,10 +45,11 @@ ament_target_dependencies(simple_commander
   lifecycle_msgs
   behaviortree_cpp_v3
   tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 add_executable(${PROJECT_NAME}
-  src/utils/arrow_filter.cpp
   src/turn_inside.cpp
   src/goal_pose.cpp
   src/stop_robot.cpp
@@ -68,6 +71,8 @@ ament_target_dependencies(${PROJECT_NAME}
   lifecycle_msgs
   behaviortree_cpp_v3
   tf2
+  tf2_ros
+  tf2_geometry_msgs
 )
 
 # INSTALL

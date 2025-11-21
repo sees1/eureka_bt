@@ -11,18 +11,27 @@ struct Arrow {
   double angle;
 };
 
-class ArrowFilter {
+struct Cone {
+  Cone() = default;
+
+  std::string direction;
+  double distance;
+  double angle;
+};
+
+template <typename Object>
+class FalsePositiveFilter {
 public:
-  ArrowFilter(size_t window,
+  FalsePositiveFilter(size_t window,
               double allow_length_error = 2.0,
               double allow_angle_error = 3.0);
 
-  void addArrow(Arrow&& arrow);
-  Arrow getActualArrow();
+  void addObject(Object&& obj);
+  Object getActualObject();
 
   inline bool isBufferFull()
   {
-    if (arrows_.size() == window_size_)
+    if (objects_.size() == window_size_)
       return true;
 
     return false;
@@ -33,5 +42,7 @@ private:
   double allow_length_error_;
   double allow_angle_error_;
 
-  std::deque<Arrow> arrows_;
+  std::deque<Object> objects_;
 };
+
+#include "utils/impl/arrow_filter_impl.hpp"
