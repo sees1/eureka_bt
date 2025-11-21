@@ -5,6 +5,8 @@
 #include <thread>
 #include <mutex>
 
+#include "utils/arrow_filter.hpp"
+
 #include <rclcpp/rclcpp.hpp>
 #include "rcppmath/rolling_mean_accumulator.hpp"
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -50,6 +52,7 @@ private:
   bool full_info_;
   double length_error_delta_;
   double navigation_time_limit_;
+  double enough_close_to_republish_;
   size_t buffer_size_;
   double too_far_length_;
   std::string odometry_topic_name_;
@@ -74,15 +77,8 @@ private:
 
   bool republish_once_ = false;
 
-  std::string narrow_ = "none";
-  double length_ = 0.0;
-  double angle_ = 0.0;
-  double coef_ = 0.0;
-
-  std::deque<std::string> names_;
-  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> length_acc_;
-  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> angle_acc_;
-  std::shared_ptr<rcppmath::RollingMeanAccumulator<double>> coef_acc_;
+  Arrow current_arrow_;
+  std::shared_ptr<ArrowFilter> arrow_acc_;
   
   geometry_msgs::msg::PoseStamped current_robot_pose_;
   geometry_msgs::msg::PoseStamped current_goal_;

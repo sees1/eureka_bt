@@ -4,8 +4,9 @@
 #include <chrono>
 #include <deque>
 
+#include "utils/arrow_filter.hpp"
+
 #include <rclcpp/rclcpp.hpp>
-#include "rcppmath/rolling_mean_accumulator.hpp"
 #include <behaviortree_cpp_v3/action_node.h>
 
 #include <rclcpp_action/rclcpp_action.hpp>
@@ -33,7 +34,6 @@ public:
 private:
   // before been in cv node
   bool processValues();
-  double calculateAverage(const std::deque<double>& values);
 
 private:
   bool stopRobot();
@@ -67,15 +67,9 @@ private:
   std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
   
   // arrow logic substracted from cv node
-  std::deque<std::string> names_;
-  std::deque<double> length_acc_;
-  std::deque<double> angle_acc_;
-
-  std::string turn_narrow_;
-
-  std::string narrow_ = "none";
-  double length_ = 0.0;
-  double angle_ = 0.0;
+  std::shared_ptr<ArrowFilter> arrow_acc_;
+  Arrow current_arrow_;
+  std::string turn_direction_;
 
   tf2::Quaternion pose_quat_;
 

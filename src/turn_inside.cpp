@@ -75,27 +75,12 @@ Turn_inside::Turn_inside(const std::string& name,
         }
       }
 
-      if (names_.size() == buffer_size_)
-      {  
-        names_.pop_front();
-        length_acc_.pop_front();
-        angle_acc_.pop_front();
-      }
-
       // if v_idx.size == 0 than we can't find any none or arrow detection, 
-      // only cone so don't add it
+      // only cone so add none
       if (v_idx.size())
-      {
-        names_.push_back(msg->name[max_idx]);
-        length_acc_.push_back(msg->position[max_idx]);
-        angle_acc_.push_back(msg->velocity[max_idx]);
-      }
+        arrow_acc_->addArrow(Arrow{msg->name[max_idx], msg->position[max_idx], msg->velocity[max_idx]});
       else
-      {
-        names_.push_back("none");
-        length_acc_.push_back(msg->position[0]);
-        angle_acc_.push_back(msg->velocity[0]);
-      }
+        arrow_acc_->addArrow(Arrow{"none", 0.0, 0.0});
     }
   );
 
@@ -109,7 +94,7 @@ BT::PortsList Turn_inside::providedPorts()
 
 BT::NodeStatus Turn_inside::onStart()
 {
-  turn_narrow_ = "none";
+  turn_direction_ = "none";
   turning_task_finished_ = false;
   rotate_fire_once_ = false;
 
@@ -126,22 +111,22 @@ BT::NodeStatus Turn_inside::onRunning()
     {
       if (!rotate_fire_once_)
       {
-        turn_narrow_ = narrow_;
+        turn_direction_ = current_arrow_.direction;
         rotate_time_point_ = std::chrono::steady_clock::now();
         rotate_fire_once_ = true;
       }
 
       if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_ ||
-          narrow_ == "none" ||
-          length_ > too_far_length_ ||
-          std::abs(angle_) > too_big_angle_)
+          current_arrow_.direction == "none"              ||
+          current_arrow_.distance > too_far_length_       ||
+          std::abs(current_arrow_.angle) > too_big_angle_)
       {
-        updateRotation(turn_narrow_);
-        RCLCPP_INFO(node_->get_logger(), "(Turn_inside) while rotate narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
+        updateRotation(turn_direction_);
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside) while rotate narrow_ = %s, lenght_ = %f, angle = %f!", current_arrow_.direction.c_str(), current_arrow_.distance, current_arrow_.angle);
       }
       else
       {
-        RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
+        // RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
         turning_task_finished_ = true;
       }
     }
@@ -151,7 +136,7 @@ BT::NodeStatus Turn_inside::onRunning()
   else
   {
     RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
-    RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
+    // RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
     return BT::NodeStatus::SUCCESS;
   }
     
@@ -165,66 +150,12 @@ void Turn_inside::onHalted()
 
 bool Turn_inside::processValues()
 {
-  size_t names_s = names_.size();
-
-  if (names_s != buffer_size_)
+  if (!arrow_acc_->isBufferFull())
     return false;
 
-  size_t false_positive_counter = 0;
-
-  size_t left = 0;
-  size_t right = 1;
-
-  while(right < names_s)
-  {
-    if (names_[right] == "none")
-    {  
-      right++;
-      false_positive_counter++;
-      continue;
-    }
-    if (std::abs(length_acc_[left] - length_acc_[right]) > 2.0)
-      false_positive_counter++;
-    if (std::abs(angle_acc_[left] - angle_acc_[right]) > 3.0)
-      false_positive_counter++;
-
-    left = right;
-    right++;
-
-    if (static_cast<float>(false_positive_counter) / static_cast<float>(names_s) > 0.4)
-    {
-      narrow_ = "none";
-      length_ = 0.0;
-      angle_ = 0.0;
-      return false;
-    }
-  }
-
-  right--;
-
-  while(right != 0)
-  {
-    if (names_[right] == "none")
-      right--;
-    else
-      break;
-  }
-  
-  narrow_ = names_[right];
-  length_ = length_acc_[right];
-  angle_ = angle_acc_[right];
+  current_arrow_ = arrow_acc_->getActualArrow();
 
   return true;
-}
-
-double Turn_inside::calculateAverage(const std::deque<double>& values)
-{
-  double sum = 0.0;
-
-  for (const auto& value : values)
-    sum += value;
-  
-  return sum / values.size();  
 }
 
 void Turn_inside::updateRotation(std::string& turn_arrow)

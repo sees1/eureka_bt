@@ -31,6 +31,11 @@ Goalpose::Goalpose(const std::string& name,
   else
     navigation_time_limit_ = node_->declare_parameter("navigation_time_limit", 60.0);
 
+  if (node_->has_parameter("enough_close_to_republish"))
+    enough_close_to_republish_ = node_->get_parameter("enough_close_to_republish").as_double();
+  else
+    enough_close_to_republish_ = node_->declare_parameter("enough_close_to_republish", 3.0);
+
   if (node_->has_parameter("odometry_topic_name"))
     odometry_topic_name_ = node_->get_parameter("odometry_topic_name").as_string();
   else
@@ -41,14 +46,24 @@ Goalpose::Goalpose(const std::string& name,
   else
     too_far_length_ = node_->declare_parameter("too_far_distance", 4.0);
 
+  double allow_length_error, allow_angle_error;
+
+  if (node_->has_parameter("allow_length_error"))
+    allow_length_error = node_->get_parameter("allow_length_error").as_double();
+  else
+    allow_length_error = node_->declare_parameter("allow_length_error", 2.0);
+
+  if (node_->has_parameter("allow_angle_error"))
+    allow_angle_error = node_->get_parameter("allow_angle_error").as_double();
+  else
+    allow_angle_error = node_->declare_parameter("allow_angle_error", 4.0);
+
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set too_far_length = %f", too_far_length_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error_delta = %f", length_error_delta_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
 
-  length_acc_ = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
-  angle_acc_  = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(2);
-  coef_acc_   = std::make_shared<rcppmath::RollingMeanAccumulator<double>>(buffer_size_);
+  arrow_acc_ = std::make_shared<ArrowFilter>(buffer_size_, allow_length_error, allow_angle_error);
   
   navigator_->waitUntilNav2Active();
 
@@ -89,25 +104,12 @@ Goalpose::Goalpose(const std::string& name,
         }
       }
 
-      if (names_.size() == buffer_size_)
-        names_.pop_front();
-
       // if v_idx.size == 0 than we can't find any none or arrow detection, 
       // only cone so add none
       if (v_idx.size())
-      {
-        names_.push_back(msg->name[max_idx]);
-        length_acc_->accumulate(msg->position[max_idx]);
-        angle_acc_->accumulate(msg->velocity[max_idx]);
-        coef_acc_->accumulate(msg->effort[max_idx]);
-      }
+        arrow_acc_->addArrow(Arrow{msg->name[max_idx], msg->position[max_idx], msg->velocity[max_idx]});
       else
-      {
-        names_.push_back("none");
-        length_acc_->accumulate(0.0);
-        angle_acc_->accumulate(0.0);
-        coef_acc_->accumulate(0.0);
-      }
+        arrow_acc_->addArrow(Arrow{"none", 0.0, 0.0});
     }
   );
 }
@@ -151,18 +153,20 @@ BT::NodeStatus Goalpose::onRunning()
           {
             RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
 
-            // if (!republish_once_)
-            // {
-            //   if (std::hypot(std::abs(current_goal_.pose.position.x - current_robot_pose_.pose.position.x),
-            //                   std::abs(current_goal_.pose.position.y - current_robot_pose_.pose.position.y)) < 3.0 )
-            //   {
-            //     republish_once_ = true;
-            //     navigator_->cancelTask<typename nav2_msgs::action::NavigateToPose>();
+            if (!republish_once_)
+            {
+              if (std::hypot(std::abs(current_goal_.pose.position.x - current_robot_pose_.pose.position.x),
+                              std::abs(current_goal_.pose.position.y - current_robot_pose_.pose.position.y)) < enough_close_to_republish_)
+              {
+                republish_once_ = true;
+                navigator_->cancelTask<typename nav2_msgs::action::NavigateToPose>();
 
-            //     RCLCPP_INFO(node_->get_logger(), "Republishing while come to 3 m");
-            //     already_published_ = false;
-            //   }
-            // }
+                RCLCPP_INFO(node_->get_logger(), "Republishing while come to arrow closer than %f m", enough_close_to_republish_);
+                processValues();
+                already_published_ = false;
+                break;
+              }
+            }
 
             return BT::NodeStatus::RUNNING;
           }
@@ -186,15 +190,18 @@ BT::NodeStatus Goalpose::onRunning()
       }
     }
     
-    if (length_ < too_far_length_ && length_ > 1.8 && narrow_ != "none" && already_published_ == false)
+    if (current_arrow_.distance < too_far_length_ &&
+        current_arrow_.distance > 1.8             &&
+        current_arrow_.direction != "none"        &&
+        already_published_ == false)
     {
-      publishGoalPose(length_, angle_);
+      publishGoalPose(current_arrow_.distance, current_arrow_.angle);
       already_published_ = true;
     }
   }
   else
   {
-    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Can't collect enough data to start. Current candidate set size = %d", (int)names_.size());
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Can't collect enough data to start!");
     return BT::NodeStatus::RUNNING;
   }
 
@@ -239,21 +246,10 @@ void Goalpose::onHalted()
 
 bool Goalpose::processValues()
 {
-  if (names_.size() != buffer_size_)
+  if (!arrow_acc_->isBufferFull())
     return false;
 
-  bool has_no_detection = std::any_of(names_.begin(), names_.end(),
-    [](const std::string& name)
-    {
-      return name == "none";
-    }
-  );
-
-  narrow_ = has_no_detection ? "none" : names_.back();
-
-  length_ = length_acc_->getRollingMean();
-  angle_ = angle_acc_->getRollingMean();
-  coef_ = coef_acc_->getRollingMean();
+  current_arrow_ = arrow_acc_->getActualArrow();
 
   return true;
 }
@@ -268,11 +264,6 @@ void Goalpose::publishGoalPose(double length, double angle)
   double before_length = length;
 
   length += length_error_delta_;
-
-  // if (angle < 0.0)
-  //   angle -= 2.0;
-  // else
-  //   angle += 2.0;
 
   // lenght in robot frame
   double local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
@@ -318,23 +309,22 @@ void Goalpose::publishGoalPose(double length, double angle)
     current_path = navigator_->getPath(current_robot_pose_, current_goal_);
   }
 
-  // if (length > 1.5)
-  //   length -= 1.5;
-  if (length > 1.0)
+  // we shoudn't go too close to arrow, so cut a little
+  if (length > 3.0)
     length -= 1.0;
-  else if (length > 0.5)
-    length -= 0.5;
+  else if (length > 0.5 && length <= 3.0)
+    length -= 0.6;
 
-    local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-    local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
-  
-    current_goal_.pose.position.x = current_robot_pose_.pose.position.x + (local_goal_x * cos(robot_yaw) - local_goal_y * sin(robot_yaw));
-    current_goal_.pose.position.y = current_robot_pose_.pose.position.y + (local_goal_x * sin(robot_yaw) + local_goal_y * cos(robot_yaw)); // because lenght is dist between cam and arrow
-    current_goal_.pose.position.z = 0.0;
-    current_goal_.pose.orientation.x = current_robot_pose_.pose.orientation.x;
-    current_goal_.pose.orientation.y = current_robot_pose_.pose.orientation.y;
-    current_goal_.pose.orientation.z = current_robot_pose_.pose.orientation.z;
-    current_goal_.pose.orientation.w = current_robot_pose_.pose.orientation.w;
+  local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
+  local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
+
+  current_goal_.pose.position.x = current_robot_pose_.pose.position.x + (local_goal_x * cos(robot_yaw) - local_goal_y * sin(robot_yaw));
+  current_goal_.pose.position.y = current_robot_pose_.pose.position.y + (local_goal_x * sin(robot_yaw) + local_goal_y * cos(robot_yaw)); // because lenght is dist between cam and arrow
+  current_goal_.pose.position.z = 0.0;
+  current_goal_.pose.orientation.x = current_robot_pose_.pose.orientation.x;
+  current_goal_.pose.orientation.y = current_robot_pose_.pose.orientation.y;
+  current_goal_.pose.orientation.z = current_robot_pose_.pose.orientation.z;
+  current_goal_.pose.orientation.w = current_robot_pose_.pose.orientation.w;
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, end_yaw = %f)!", current_goal_.pose.position.x, current_goal_.pose.position.y, robot_yaw);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Length of path cropped from %f to %f!", before_length, length);
