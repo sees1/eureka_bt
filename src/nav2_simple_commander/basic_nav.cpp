@@ -493,8 +493,17 @@ void BasicNavigator::_waitForNodeToActivate(const std::string & node_name)
   RCLCPP_DEBUG(this->get_logger(), "Waiting for %s to become active..", node_name.c_str());
   std::string node_service = node_name + "/get_state";
   auto state_client = this->create_client<lifecycle_msgs::srv::GetState>(node_service);
+  auto start_wait = std::chrono::steady_clock::now();
   while (!state_client->wait_for_service(1s)) {
     RCLCPP_INFO(this->get_logger(), "%s service not available, waiting...", node_service.c_str());
+
+    if (std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - start_wait).count() > 7.0)
+    {
+      std::string error = node_name;
+      error += " not available after waiting ";
+      error += std::to_string(7.0);
+      throw std::runtime_error(error);
+    }
   }
 
   auto req = std::make_shared<lifecycle_msgs::srv::GetState::Request>();

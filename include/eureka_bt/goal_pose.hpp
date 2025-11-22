@@ -5,6 +5,7 @@
 #include <thread>
 #include <mutex>
 #include <tuple>
+#include <exception>
 
 #include "utils/false_positive_filter.hpp"
 

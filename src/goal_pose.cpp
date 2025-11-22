@@ -353,11 +353,11 @@ void Goalpose::publishGoalPose(double length, double angle)
     if (length < 0.0)
     {
       length = before_length;
-      length_error_delta_ += 0.1;
+      length_error_delta_ += 0.05;
     }
     
     if (length_error_delta_ > 0.0)
-      throw std::runtime_error("wtf");
+      throw std::runtime_error("We can't compute feasible plan so aborted tree!");
 
     length += length_error_delta_;
 

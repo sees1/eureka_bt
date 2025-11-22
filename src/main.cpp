@@ -41,7 +41,15 @@ int main(int argc, char **argv) {
   auto timer = nh->create_wall_timer(std::chrono::milliseconds(100), 
     [&tree]()
     {
-      tree.tickRoot();
+      try {
+        tree.tickRoot();
+      }
+      catch(std::exception& ex)
+      {
+        RCLCPP_ERROR(rclcpp::get_logger("main_bt"), ex.what());
+        tree.haltTree();
+        throw;
+      }
     }
   );
 
