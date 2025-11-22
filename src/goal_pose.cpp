@@ -63,8 +63,8 @@ Goalpose::Goalpose(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
 
-  arrow_acc_ = std::make_shared<FalsePositiveFilter<Arrow>>(buffer_size_, allow_length_error, allow_angle_error);
-  cone_acc_ = std::make_shared<FalsePositiveFilter<Cone>>(buffer_size_, allow_length_error, allow_angle_error);
+  arrow_acc_ = std::make_shared<FalsePositiveFilter>(buffer_size_, allow_length_error, allow_angle_error);
+  cone_acc_ = std::make_shared<FalsePositiveFilter>(buffer_size_, allow_length_error, allow_angle_error);
 
   navigator_->waitUntilNav2Active();
 
@@ -114,28 +114,14 @@ Goalpose::Goalpose(const std::string& name,
       // if v_idx.size == 0 than we can't find any none or arrow detection, 
       // only cone so add none
       if (arrow_idx.size())
-        arrow_acc_->addObject(Arrow{msg->name[arrow_max_idx], msg->position[arrow_max_idx], msg->velocity[arrow_max_idx]});
+        arrow_acc_->addObject(Object{msg->name[arrow_max_idx], msg->position[arrow_max_idx], msg->velocity[arrow_max_idx]});
       else
-        arrow_acc_->addObject(Arrow{"none", 0.0, 0.0});
+        arrow_acc_->addObject(Object{"none", 0.0, 0.0});
 
       if (cone_idx.size())
-        cone_acc_->addObject(Cone{msg->name[cone_max_idx], msg->position[cone_max_idx], msg->velocity[cone_max_idx]});
+        cone_acc_->addObject(Object{msg->name[cone_max_idx], msg->position[cone_max_idx], msg->velocity[cone_max_idx]});
       else
-        cone_acc_->addObject(Cone{"none", 0.0, 0.0});
-    }
-  );
-
-  pose_timer_ = node_->create_wall_timer(std::chrono::milliseconds(100), 
-    [this]()
-    {
-      try
-      {
-        current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
-      } 
-      catch (tf2::TransformException &ex)
-      {
-        RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
-      }
+        cone_acc_->addObject(Object{"none", 0.0, 0.0});
     }
   );
 }
@@ -178,6 +164,15 @@ BT::NodeStatus Goalpose::onRunning()
           else
           {
             RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot try to move to goal!");
+
+            try
+            {
+              current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+            } 
+            catch (tf2::TransformException &ex)
+            {
+              RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
+            }
 
             if (!republish_once_)
             {
@@ -300,8 +295,17 @@ bool Goalpose::processValues()
 void Goalpose::publishGoalPose(double length, double angle) 
 {
   current_goal_.header.stamp = node_->now();
-  current_goal_.header.frame_id = "map"; 
-  
+  current_goal_.header.frame_id = "map";
+
+  try
+  {
+    current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+  } 
+  catch (tf2::TransformException &ex)
+  {
+    RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
+  }
+
   geometry_msgs::msg::PoseStamped robot_pose;
   robot_pose.header.stamp = current_goal_.header.stamp;
   robot_pose.header.frame_id = "map";

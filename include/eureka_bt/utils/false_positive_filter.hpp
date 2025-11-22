@@ -3,23 +3,14 @@
 #include <string>
 #include <cmath>
 
-struct Arrow {
-  Arrow() = default;
+struct Object {
+  Object() = default;
 
   std::string direction;
   double distance;
   double angle;
 };
 
-struct Cone {
-  Cone() = default;
-
-  std::string direction;
-  double distance;
-  double angle;
-};
-
-template <typename Object>
 class FalsePositiveFilter {
 public:
   FalsePositiveFilter(size_t window,
@@ -44,5 +35,3 @@ private:
 
   std::deque<Object> objects_;
 };
-
-#include "utils/impl/arrow_filter_impl.hpp"

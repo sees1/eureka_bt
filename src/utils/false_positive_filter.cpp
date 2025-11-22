@@ -1,5 +1,6 @@
-template <typename Object>
-FalsePositiveFilter<Object>::FalsePositiveFilter(size_t window,
+#include "utils/false_positive_filter.hpp"
+
+FalsePositiveFilter::FalsePositiveFilter(size_t window,
                          double allow_length_error,
                          double allow_angle_error)
 : window_size_(window),
@@ -7,8 +8,7 @@ FalsePositiveFilter<Object>::FalsePositiveFilter(size_t window,
   allow_angle_error_(allow_angle_error)
 { }
 
-template <typename Object>
-void FalsePositiveFilter<Object>::addObject(Object&& arrow)
+void FalsePositiveFilter::addObject(Object&& arrow)
 {
   if (isBufferFull())
     objects_.pop_front();
@@ -16,8 +16,7 @@ void FalsePositiveFilter<Object>::addObject(Object&& arrow)
   objects_.push_back(std::move(arrow));
 }
 
-template <typename Object>
-Object FalsePositiveFilter<Object>::getActualObject()
+Object FalsePositiveFilter::getActualObject()
 {
   if (!isBufferFull())
     return Object{"none", 0.0, 0.0};

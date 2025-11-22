@@ -4,7 +4,7 @@
 #include <chrono>
 #include <deque>
 
-#include "utils/arrow_filter.hpp"
+#include "utils/false_positive_filter.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <behaviortree_cpp_v3/action_node.h>
@@ -65,10 +65,10 @@ private:
   std::chrono::time_point<std::chrono::steady_clock> rotate_time_point_;
   
   // arrow logic substracted from cv node
-  std::shared_ptr<FalsePositiveFilter<Arrow>> arrow_acc_;
-  std::shared_ptr<FalsePositiveFilter<Cone>> cone_acc_;
-  Arrow current_arrow_;
-  Cone current_cone_;
+  std::shared_ptr<FalsePositiveFilter> arrow_acc_;
+  std::shared_ptr<FalsePositiveFilter> cone_acc_;
+  Object current_arrow_;
+  Object current_cone_;
   std::string turn_direction_;
   double dummy_rotation_dur_;
 

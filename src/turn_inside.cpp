@@ -53,8 +53,8 @@ Turn_inside::Turn_inside(const std::string& name,
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_big_angle = %f", too_big_angle_);
   RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Set too_far_distance = %f", too_far_length_);
 
-  arrow_acc_ = std::make_shared<FalsePositiveFilter<Arrow>>(buffer_size_, allow_length_error, allow_angle_error);
-  cone_acc_ = std::make_shared<FalsePositiveFilter<Cone>>(buffer_size_, allow_length_error, allow_angle_error);
+  arrow_acc_ = std::make_shared<FalsePositiveFilter>(buffer_size_, allow_length_error, allow_angle_error);
+  cone_acc_ = std::make_shared<FalsePositiveFilter>(buffer_size_, allow_length_error, allow_angle_error);
 
   arrow_sub_ = node_->create_subscription<sensor_msgs::msg::JointState>("/arrow_detection", 10,
     [&](const sensor_msgs::msg::JointState::SharedPtr msg)
@@ -99,14 +99,14 @@ Turn_inside::Turn_inside(const std::string& name,
       // if v_idx.size == 0 than we can't find any none or arrow detection, 
       // only cone so add none
       if (arrow_idx.size())
-        arrow_acc_->addObject(Arrow{msg->name[arrow_max_idx], msg->position[arrow_max_idx], msg->velocity[arrow_max_idx]});
+        arrow_acc_->addObject(Object{msg->name[arrow_max_idx], msg->position[arrow_max_idx], msg->velocity[arrow_max_idx]});
       else
-        arrow_acc_->addObject(Arrow{"none", 0.0, 0.0});
+        arrow_acc_->addObject(Object{"none", 0.0, 0.0});
 
       if (cone_idx.size())
-        cone_acc_->addObject(Cone{msg->name[cone_max_idx], msg->position[cone_max_idx], msg->velocity[cone_max_idx]});
+        cone_acc_->addObject(Object{msg->name[cone_max_idx], msg->position[cone_max_idx], msg->velocity[cone_max_idx]});
       else
-        cone_acc_->addObject(Cone{"none", 0.0, 0.0});
+        cone_acc_->addObject(Object{"none", 0.0, 0.0});
     }
   );
 

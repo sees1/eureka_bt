@@ -6,7 +6,7 @@
 #include <mutex>
 #include <tuple>
 
-#include "utils/arrow_filter.hpp"
+#include "utils/false_positive_filter.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include "rcppmath/rolling_mean_accumulator.hpp"
@@ -78,8 +78,6 @@ private:
   std::shared_ptr<tf2_ros::Buffer> tf_buffer_;
   std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
   rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr arrow_sub_;
-  rclcpp::TimerBase::SharedPtr pose_timer_;
-
 
   bool already_published_;
   double current_goal_x_;
@@ -88,10 +86,10 @@ private:
 
   bool republish_once_ = false;
 
-  Arrow current_arrow_;
-  Cone current_cone_;
-  std::shared_ptr<FalsePositiveFilter<Arrow>> arrow_acc_;
-  std::shared_ptr<FalsePositiveFilter<Cone>> cone_acc_;
+  Object current_arrow_;
+  Object current_cone_;
+  std::shared_ptr<FalsePositiveFilter> arrow_acc_;
+  std::shared_ptr<FalsePositiveFilter> cone_acc_;
   
   geometry_msgs::msg::TransformStamped current_robot_transform_;
   geometry_msgs::msg::PoseStamped current_goal_;
