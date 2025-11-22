@@ -130,8 +130,6 @@ BT::NodeStatus Turn_inside::onStart()
 
 BT::NodeStatus Turn_inside::onRunning() 
 {
-  std::lock_guard<std::mutex> lc(mut_);
-
   if (!turning_task_finished_)
   {
     if (processValues())
@@ -151,6 +149,7 @@ BT::NodeStatus Turn_inside::onRunning()
 
       if (std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - rotate_time_point_).count() / 1000.0 < dummy_rotation_dur_)
       {
+        RCLCPP_INFO(node_->get_logger(), "(Turn_inside) dummy rotation!");
         updateRotation(turn_direction_);
         return BT::NodeStatus::RUNNING;
       }
@@ -179,7 +178,6 @@ BT::NodeStatus Turn_inside::onRunning()
       }
       else
       {
-        // RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp) narrow_ = %s, lenght_ = %f, angle = %f!", narrow_.c_str(), length_, angle_);
         turning_task_finished_ = true;
       }
     }
@@ -189,7 +187,6 @@ BT::NodeStatus Turn_inside::onRunning()
   else
   {
     RCLCPP_INFO(node_->get_logger(), "(Turn_inside) Robot sucessfully rotated on place!");
-    // RCLCPP_INFO(node_->get_logger(), "(Turn_inside)(Temp2) narrow_ = %s, lenght_ = %f!", narrow_.c_str(), length_);
     return BT::NodeStatus::SUCCESS;
   }
     
@@ -203,6 +200,8 @@ void Turn_inside::onHalted()
 
 bool Turn_inside::processValues()
 {
+  std::lock_guard<std::mutex> lc(mut_);
+
   if (!arrow_acc_->isBufferFull() && !cone_acc_->isBufferFull())
     return false;
 

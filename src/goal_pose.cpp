@@ -140,8 +140,6 @@ BT::NodeStatus Goalpose::onStart()
 
 BT::NodeStatus Goalpose::onRunning()
 {
-  std::lock_guard<std::mutex> lc(mut_);
-
   if (processValues())
   {
     // RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
@@ -283,6 +281,8 @@ void Goalpose::onHalted()
 
 bool Goalpose::processValues()
 {
+  std::lock_guard<std::mutex> lc(mut_);
+
   if (!arrow_acc_->isBufferFull() && !cone_acc_->isBufferFull())
     return false;
 
