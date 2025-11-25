@@ -86,6 +86,7 @@ private:
   double transform_tolerance_;
 
   bool republish_once_ = false;
+  bool first_pub;
 
   Object current_arrow_;
   Object current_cone_;

@@ -135,6 +135,7 @@ BT::NodeStatus Goalpose::onStart()
 {
   republish_once_ = false;
   already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
+  first_pub = true;
   return BT::NodeStatus::RUNNING;
 }
 
@@ -328,11 +329,18 @@ void Goalpose::publishGoalPose(double length, double angle)
   
   double before_length = length;
   
+  if (first_pub)
+  {
+    before_length -= 0.2;
+    length -= 0.2;
+    first_pub = false;
+  }
+
   length += length_error_delta_;
   
   // lenght in robot frame
   double local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-  double local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
+  double local_goal_y = (length) * sin((-angle * M_PI) / 180.0) + body_width / 2.0f;
   
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) robot x = %f, robot y = %f, robot_angle = %f!",current_robot_transform_.transform.translation.x, current_robot_transform_.transform.translation.y, robot_yaw);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) angle = %f!", angle);
@@ -362,7 +370,7 @@ void Goalpose::publishGoalPose(double length, double angle)
     length += length_error_delta_;
 
     local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-    local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
+    local_goal_y = (length) * sin((-angle * M_PI) / 180.0) + body_width / 2.0f;
   
     current_goal_.pose.position.x = current_robot_transform_.transform.translation.x + (local_goal_x * robot_yaw_cos - local_goal_y * robot_yaw_sin);
     current_goal_.pose.position.y = current_robot_transform_.transform.translation.y + (local_goal_x * robot_yaw_sin + local_goal_y * robot_yaw_cos); // because lenght is dist between cam and arrow
@@ -376,13 +384,13 @@ void Goalpose::publishGoalPose(double length, double angle)
   }
 
   // we shoudn't go too close to arrow, so cut a little
-  if (length > 3.0)
+  if (length > 4.5)
     length -= 1.0;
-  else if (length > 0.5 && length <= 3.0)
+  else if (length > 0.5 && length <= 4.5)
     length -= 0.45;
 
   local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-  local_goal_y = (length) * sin((-angle * M_PI) / 180.0);
+  local_goal_y = (length) * sin((-angle * M_PI) / 180.0) + body_width / 2.0f;
 
   current_goal_.pose.position.x = current_robot_transform_.transform.translation.x + (local_goal_x * robot_yaw_cos - local_goal_y * robot_yaw_sin);
   current_goal_.pose.position.y = current_robot_transform_.transform.translation.y + (local_goal_x * robot_yaw_sin + local_goal_y * robot_yaw_cos); // because lenght is dist between cam and arrow
