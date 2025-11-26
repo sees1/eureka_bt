@@ -124,6 +124,17 @@ Goalpose::Goalpose(const std::string& name,
         cone_acc_->addObject(Object{"none", 0.0, 0.0});
     }
   );
+
+  track.open("/home/eurekaslam/track.txt");
+
+  if (!track.is_open()) {
+    std::cerr << "Can't open log!\n";
+  }
+}
+
+Goalpose::~Goalpose()
+{
+  track.close();
 }
 
 BT::PortsList Goalpose::providedPorts() 
@@ -242,6 +253,13 @@ BT::NodeStatus Goalpose::onRunning()
             go_to_pose_res_ = navigator_->goToPose(current_goal_);
             start_navigation_time_ = std::chrono::steady_clock::now();
             already_published_ = true;
+
+            track << "goal x = "  << current_goal_.pose.position.x 
+                  << " y = "      << current_goal_.pose.position.y
+                  << " quat x = " << current_goal_.pose.orientation.x
+                  << " quat y = " << current_goal_.pose.orientation.y 
+                  << " quat z = " << current_goal_.pose.orientation.z 
+                  << " quat w = " << current_goal_.pose.orientation.w << "\n"
 
             return BT::NodeStatus::RUNNING;
           }
@@ -447,6 +465,13 @@ void Goalpose::publishGoalPose(double length, double angle)
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, end_yaw = %f)!", current_goal_.pose.position.x, current_goal_.pose.position.y, robot_yaw + ((angle * M_PI) / 180.0));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Length of path cropped from %f to %f!", before_length, length);
+
+  track << "goal x = "  << current_goal_.pose.position.x 
+        << " y = "      << current_goal_.pose.position.y
+        << " quat x = " << current_goal_.pose.orientation.x
+        << " quat y = " << current_goal_.pose.orientation.y 
+        << " quat z = " << current_goal_.pose.orientation.z 
+        << " quat w = " << current_goal_.pose.orientation.w << "\n"
 
   go_to_pose_res_ = navigator_->goToPose(current_goal_);
   start_navigation_time_ = std::chrono::steady_clock::now();

@@ -40,6 +40,8 @@ public:
            const BT::NodeConfiguration& config,
            rclcpp::Node::SharedPtr node);
 
+  ~Goalpose();
+
   static BT::PortsList providedPorts();
 
   virtual BT::NodeStatus onStart() override;
@@ -99,4 +101,6 @@ private:
   geometry_msgs::msg::PoseStamped current_goal_;
 
   std::mutex mut_;
+
+  std::ofstream track;
 };
