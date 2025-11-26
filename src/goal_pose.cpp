@@ -154,6 +154,59 @@ BT::NodeStatus Goalpose::onStart()
 
 BT::NodeStatus Goalpose::onRunning()
 {
+  if (go_home_)
+  {
+    go_back_ = navigator_->backup(0.15, 0.15, 10);
+
+    while(navigator_->isTaskComplete<typename nav2_msgs::action::BackUp>(go_back_) != ResultCode::SUCCEEDED)
+    {
+      RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot backup before go to start point!");
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    RCLCPP_INFO(node_->get_logger(), "(Goalpose) Move to start!");
+
+    try
+    {
+      current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+    } 
+    catch (tf2::TransformException &ex)
+    {
+      RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
+    }
+
+    geometry_msgs::msg::PoseStamped robot_pose;
+    robot_pose.header.stamp = current_goal_.header.stamp;
+    robot_pose.header.frame_id = "map";
+    robot_pose.pose.position.x = current_robot_transform_.transform.translation.x;
+    robot_pose.pose.position.y = current_robot_transform_.transform.translation.y;
+    robot_pose.pose.position.z = current_robot_transform_.transform.translation.z;
+    robot_pose.pose.orientation.x = current_robot_transform_.transform.rotation.x;
+    robot_pose.pose.orientation.y = current_robot_transform_.transform.rotation.y;
+    robot_pose.pose.orientation.z = current_robot_transform_.transform.rotation.z;
+    robot_pose.pose.orientation.w = current_robot_transform_.transform.rotation.w;
+
+    current_goal_.pose.position.x = 0.0;
+    current_goal_.pose.position.y = 0.0; // because lenght is dist between cam and arrow
+    current_goal_.pose.position.z = 0.0;
+    current_goal_.pose.orientation.x = current_robot_transform_.transform.rotation.x;
+    current_goal_.pose.orientation.y = current_robot_transform_.transform.rotation.y;
+    current_goal_.pose.orientation.z = current_robot_transform_.transform.rotation.z;
+    current_goal_.pose.orientation.w = current_robot_transform_.transform.rotation.w;
+    go_to_pose_res_ = navigator_->goToPose(current_goal_);
+    start_navigation_time_ = std::chrono::steady_clock::now();
+    already_published_ = true;
+
+    track << "goal x = "  << current_goal_.pose.position.x 
+          << " y = "      << current_goal_.pose.position.y
+          << " quat x = " << current_goal_.pose.orientation.x
+          << " quat y = " << current_goal_.pose.orientation.y 
+          << " quat z = " << current_goal_.pose.orientation.z 
+          << " quat w = " << current_goal_.pose.orientation.w << "\n"
+
+    go_home_ = false;
+  }
+
   if (processValues())
   {
     // RCLCPP_INFO(node_->get_logger(), "(Goalpose) Collecting length = %f, arrow direction = %s, coef = %f, angle = %f, after process values!", length_, narrow_.c_str(), coef_, angle_);
@@ -212,54 +265,10 @@ BT::NodeStatus Goalpose::onRunning()
         }
         case ResultCode::SUCCEEDED:
         {
-          if (go_home_)
-          {
-            RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is arive to start point!");
-            throw std::runtime_error("close bt");
-          }
-
           if (current_cone_.direction != "none")
           {
             go_home_ = true;
             RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is stoped aroun cone! Move to start!");
-
-            try
-            {
-              current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
-            } 
-            catch (tf2::TransformException &ex)
-            {
-              RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
-            }
-
-            geometry_msgs::msg::PoseStamped robot_pose;
-            robot_pose.header.stamp = current_goal_.header.stamp;
-            robot_pose.header.frame_id = "map";
-            robot_pose.pose.position.x = current_robot_transform_.transform.translation.x;
-            robot_pose.pose.position.y = current_robot_transform_.transform.translation.y;
-            robot_pose.pose.position.z = current_robot_transform_.transform.translation.z;
-            robot_pose.pose.orientation.x = current_robot_transform_.transform.rotation.x;
-            robot_pose.pose.orientation.y = current_robot_transform_.transform.rotation.y;
-            robot_pose.pose.orientation.z = current_robot_transform_.transform.rotation.z;
-            robot_pose.pose.orientation.w = current_robot_transform_.transform.rotation.w;
-
-            current_goal_.pose.position.x = 0.0;
-            current_goal_.pose.position.y = 0.0; // because lenght is dist between cam and arrow
-            current_goal_.pose.position.z = 0.0;
-            current_goal_.pose.orientation.x = current_robot_transform_.transform.rotation.x;
-            current_goal_.pose.orientation.y = current_robot_transform_.transform.rotation.y;
-            current_goal_.pose.orientation.z = current_robot_transform_.transform.rotation.z;
-            current_goal_.pose.orientation.w = current_robot_transform_.transform.rotation.w;
-            go_to_pose_res_ = navigator_->goToPose(current_goal_);
-            start_navigation_time_ = std::chrono::steady_clock::now();
-            already_published_ = true;
-
-            track << "goal x = "  << current_goal_.pose.position.x 
-                  << " y = "      << current_goal_.pose.position.y
-                  << " quat x = " << current_goal_.pose.orientation.x
-                  << " quat y = " << current_goal_.pose.orientation.y 
-                  << " quat z = " << current_goal_.pose.orientation.z 
-                  << " quat w = " << current_goal_.pose.orientation.w << "\n"
 
             return BT::NodeStatus::RUNNING;
           }

@@ -90,7 +90,10 @@ private:
 
   bool republish_once_ = false;
   bool first_pub;
+  
+  // go home logic
   bool go_home_;
+  std::shared_future<rclcpp_action::Client<nav2_msgs::action::BackUp>::WrappedResult> go_back_;
 
   Object current_arrow_;
   Object current_cone_;
