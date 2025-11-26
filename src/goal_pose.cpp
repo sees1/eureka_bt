@@ -202,7 +202,7 @@ BT::NodeStatus Goalpose::onRunning()
           << " quat x = " << current_goal_.pose.orientation.x
           << " quat y = " << current_goal_.pose.orientation.y 
           << " quat z = " << current_goal_.pose.orientation.z 
-          << " quat w = " << current_goal_.pose.orientation.w << "\n"
+          << " quat w = " << current_goal_.pose.orientation.w << "\n";
 
     go_home_ = false;
   }
@@ -480,7 +480,7 @@ void Goalpose::publishGoalPose(double length, double angle)
         << " quat x = " << current_goal_.pose.orientation.x
         << " quat y = " << current_goal_.pose.orientation.y 
         << " quat z = " << current_goal_.pose.orientation.z 
-        << " quat w = " << current_goal_.pose.orientation.w << "\n"
+        << " quat w = " << current_goal_.pose.orientation.w << "\n";
 
   go_to_pose_res_ = navigator_->goToPose(current_goal_);
   start_navigation_time_ = std::chrono::steady_clock::now();

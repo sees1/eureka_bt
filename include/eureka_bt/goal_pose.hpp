@@ -6,6 +6,7 @@
 #include <mutex>
 #include <tuple>
 #include <exception>
+#include <fstream>
 
 #include "utils/false_positive_filter.hpp"
 
@@ -61,7 +62,7 @@ private:
   // ros parameters
   bool full_info_;
   double config_lenght_error_delta_;
-  double lenght_error_delta_;
+  double length_error_delta_;
   double navigation_time_limit_;
   double enough_close_to_republish_;
   size_t buffer_size_;
