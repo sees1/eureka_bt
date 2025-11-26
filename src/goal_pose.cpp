@@ -202,7 +202,7 @@ BT::NodeStatus Goalpose::onRunning()
           << " quat x = " << current_goal_.pose.orientation.x
           << " quat y = " << current_goal_.pose.orientation.y 
           << " quat z = " << current_goal_.pose.orientation.z 
-          << " quat w = " << current_goal_.pose.orientation.w << "\n"
+          << " quat w = " << current_goal_.pose.orientation.w << "\n";
 
     go_home_ = false;
   }
@@ -422,56 +422,6 @@ void Goalpose::publishGoalPose(double length, double angle)
   current_goal_.pose.orientation.z = robot_goal_pose.z();
   current_goal_.pose.orientation.w = robot_goal_pose.w();
 
-  nav_msgs::msg::Path current_path = navigator_->getPath(robot_pose, current_goal_);
-  
-  int research_count = 0;
-
-  while (current_path.poses.empty())
-  {
-    if (length < 0.0)
-    {
-      research_count++;
-      length = before_length;
-      length += research_count * length_error_delta_;
-      length_error_delta_ += 0.1;
-    }
-    
-    if (length_error_delta_ > 0.0)
-      throw std::runtime_error("We can't compute feasible plan so aborted tree!");
-
-    length += length_error_delta_;
-
-    local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-    local_goal_y = (length) * sin((-angle * M_PI) / 180.0) + body_width / 2.0f;
-  
-    current_goal_.pose.position.x = current_robot_transform_.transform.translation.x + (local_goal_x * robot_yaw_cos - local_goal_y * robot_yaw_sin);
-    current_goal_.pose.position.y = current_robot_transform_.transform.translation.y + (local_goal_x * robot_yaw_sin + local_goal_y * robot_yaw_cos); // because lenght is dist between cam and arrow
-    current_goal_.pose.position.z = 0.0;
-    current_goal_.pose.orientation.x = robot_goal_pose.x();
-    current_goal_.pose.orientation.y = robot_goal_pose.y();
-    current_goal_.pose.orientation.z = robot_goal_pose.z();
-    current_goal_.pose.orientation.w = robot_goal_pose.w();
-
-    current_path = navigator_->getPath(robot_pose, current_goal_);
-  }
-
-  // we shoudn't go too close to arrow, so cut a little
-  if (length > 4.5)
-    length -= 1.0;
-  else if (length > 0.5 && length <= 4.5)
-    length -= 0.45;
-
-  local_goal_x = (length) * cos((-angle * M_PI) / 180.0);
-  local_goal_y = (length) * sin((-angle * M_PI) / 180.0) + body_width / 2.0f;
-
-  current_goal_.pose.position.x = current_robot_transform_.transform.translation.x + (local_goal_x * robot_yaw_cos - local_goal_y * robot_yaw_sin);
-  current_goal_.pose.position.y = current_robot_transform_.transform.translation.y + (local_goal_x * robot_yaw_sin + local_goal_y * robot_yaw_cos); // because lenght is dist between cam and arrow
-  current_goal_.pose.position.z = 0.0;
-  current_goal_.pose.orientation.x = robot_goal_pose.x();
-  current_goal_.pose.orientation.y = robot_goal_pose.y();
-  current_goal_.pose.orientation.z = robot_goal_pose.z();
-  current_goal_.pose.orientation.w = robot_goal_pose.w();
-
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Create and publish goal (x = %f, y = %f, end_yaw = %f)!", current_goal_.pose.position.x, current_goal_.pose.position.y, robot_yaw + ((angle * M_PI) / 180.0));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Length of path cropped from %f to %f!", before_length, length);
 
@@ -480,7 +430,7 @@ void Goalpose::publishGoalPose(double length, double angle)
         << " quat x = " << current_goal_.pose.orientation.x
         << " quat y = " << current_goal_.pose.orientation.y 
         << " quat z = " << current_goal_.pose.orientation.z 
-        << " quat w = " << current_goal_.pose.orientation.w << "\n"
+        << " quat w = " << current_goal_.pose.orientation.w << "\n";
 
   go_to_pose_res_ = navigator_->goToPose(current_goal_);
   start_navigation_time_ = std::chrono::steady_clock::now();
