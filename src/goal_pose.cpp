@@ -14,9 +14,9 @@ Goalpose::Goalpose(const std::string& name,
     full_info_ = node_->declare_parameter("full_info", true);
   
   if (node_->has_parameter("length_error_delta"))
-    length_error_delta_ = node_->get_parameter("length_error_delta").as_double();
+    config_lenght_error_delta_ = node_->get_parameter("length_error_delta").as_double();
   else
-    length_error_delta_ = node_->declare_parameter("length_error_delta", -0.3);
+    config_lenght_error_delta_ = node_->declare_parameter("length_error_delta", -0.3);
 
   if (length_error_delta_ > 0.0)
     RCLCPP_WARN(node_->get_logger(), "(Goalpose) Set length_error_delta greater than zero is unusual! Please read code one more time");
@@ -59,7 +59,7 @@ Goalpose::Goalpose(const std::string& name,
     allow_angle_error = node_->declare_parameter("allow_angle_error", 4.0);
 
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set too_far_length = %f", too_far_length_);
-  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error_delta = %f", length_error_delta_);
+  RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set length_error_delta = %f", config_lenght_error_delta_);
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set buffer_size = %d", static_cast<int>(buffer_size_));
   RCLCPP_INFO(node_->get_logger(), "(Goalpose) Set odometry_topic_name = %s", odometry_topic_name_.c_str());
 
@@ -133,8 +133,10 @@ BT::PortsList Goalpose::providedPorts()
 
 BT::NodeStatus Goalpose::onStart()
 {
+  go_home_ = false;
   republish_once_ = false;
   already_published_ = false; // manual swap because current type of bt node didn't create after returning SUCCESS or FAILUREc
+  length_error_delta_ = config_lenght_error_delta_;
   first_pub = true;
   return BT::NodeStatus::RUNNING;
 }
@@ -199,10 +201,49 @@ BT::NodeStatus Goalpose::onRunning()
         }
         case ResultCode::SUCCEEDED:
         {
+          if (go_home_)
+          {
+            RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is arive to start point!");
+            throw std::runtime_error("close bt");
+          }
+
           if (current_cone_.direction != "none")
           {
-            RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is stoped aroun cone!");
-            std::exit(1);
+            go_home_ = true;
+            RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is stoped aroun cone! Move to start!");
+
+            try
+            {
+              current_robot_transform_ = tf_buffer_->lookupTransform("map", "base_link", tf2::TimePointZero);
+            } 
+            catch (tf2::TransformException &ex)
+            {
+              RCLCPP_WARN(node_->get_logger(), "tf lookup from %s to %s failed: %s", "base_link", "map", ex.what());
+            }
+
+            geometry_msgs::msg::PoseStamped robot_pose;
+            robot_pose.header.stamp = current_goal_.header.stamp;
+            robot_pose.header.frame_id = "map";
+            robot_pose.pose.position.x = current_robot_transform_.transform.translation.x;
+            robot_pose.pose.position.y = current_robot_transform_.transform.translation.y;
+            robot_pose.pose.position.z = current_robot_transform_.transform.translation.z;
+            robot_pose.pose.orientation.x = current_robot_transform_.transform.rotation.x;
+            robot_pose.pose.orientation.y = current_robot_transform_.transform.rotation.y;
+            robot_pose.pose.orientation.z = current_robot_transform_.transform.rotation.z;
+            robot_pose.pose.orientation.w = current_robot_transform_.transform.rotation.w;
+
+            current_goal_.pose.position.x = 0.0;
+            current_goal_.pose.position.y = 0.0; // because lenght is dist between cam and arrow
+            current_goal_.pose.position.z = 0.0;
+            current_goal_.pose.orientation.x = current_robot_transform_.transform.rotation.x;
+            current_goal_.pose.orientation.y = current_robot_transform_.transform.rotation.y;
+            current_goal_.pose.orientation.z = current_robot_transform_.transform.rotation.z;
+            current_goal_.pose.orientation.w = current_robot_transform_.transform.rotation.w;
+            go_to_pose_res_ = navigator_->goToPose(current_goal_);
+            start_navigation_time_ = std::chrono::steady_clock::now();
+            already_published_ = true;
+
+            return BT::NodeStatus::RUNNING;
           }
           else
             RCLCPP_INFO(node_->get_logger(), "(Goalpose) Robot is sucessfully achive goal! Move to next stage!");
@@ -356,12 +397,16 @@ void Goalpose::publishGoalPose(double length, double angle)
 
   nav_msgs::msg::Path current_path = navigator_->getPath(robot_pose, current_goal_);
   
+  int research_count = 0;
+
   while (current_path.poses.empty())
   {
     if (length < 0.0)
     {
+      research_count++;
       length = before_length;
-      length_error_delta_ += 0.05;
+      length += research_count * length_error_delta_;
+      length_error_delta_ += 0.1;
     }
     
     if (length_error_delta_ > 0.0)

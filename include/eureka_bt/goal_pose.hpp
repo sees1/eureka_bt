@@ -58,7 +58,8 @@ private:
 private:
   // ros parameters
   bool full_info_;
-  double length_error_delta_;
+  double config_lenght_error_delta_;
+  double lenght_error_delta_;
   double navigation_time_limit_;
   double enough_close_to_republish_;
   size_t buffer_size_;
@@ -87,6 +88,7 @@ private:
 
   bool republish_once_ = false;
   bool first_pub;
+  bool go_home_;
 
   Object current_arrow_;
   Object current_cone_;
